@@ -1,0 +1,23 @@
+carrier_selection_task:
+  description: >
+    Analyze the shipment details: Weight: {weight}, Destination: {destination}, Priority: {priority}.
+    Compare top carriers (BlueDart, Delhivery, FedEx) and pick the most suitable one.
+  expected_output: >
+    A recommendation of the best carrier with a brief reason why.
+  agent: planning_agent
+
+booking_task:
+  description: >
+    Using the carrier picked in the previous task, generate a unique AWB number 
+    and then use the barcode tool to create the 'shipping_label.png'.
+  expected_output: >
+    The generated AWB number and a confirmation that the barcode image was created.
+  agent: booking_agent
+
+tracking_task:
+  description: >
+    Create a tracking timeline for the AWB generated. Predict 3 milestones: 
+    'Manifested', 'In Transit', and 'Out for Delivery'.
+  expected_output: >
+    A formatted tracking report for the user.
+  agent: tracking_agent
