@@ -1,27 +1,25 @@
 import os
-from dotenv import load_dotenv
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from shipment.tools.custom_tools import LogisticsTools
-from crewai_tools import SerperDevTool
-
-load_dotenv()
 
 @CrewBase
 class EshipzOrchestrator():
     """Eshipz Logistics Orchestrator Crew"""
 
-    # Using Gemini LLM
+    # This specific naming fixes the 404 Not Found error
     gemini_llm = LLM(
-        model="gemini/gemini-3-flash-preview", # Try this first
-        api_key=os.getenv("GEMINI_API_KEY")
+        model="gemini/gemini-2.5-flash-lite", 
+        api_key=os.getenv("GEMINI_API_KEY"),
+        temperature=0.7,
+        max_retries=5,          # Automatically waits and tries again on 429 errors
+        request_timeout=120
     )
 
     @agent
     def planning_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['planning_agent'],
-            tools=[SerperDevTool()], # <--- Add this tool
             llm=self.gemini_llm,
             verbose=True
         )
@@ -38,7 +36,8 @@ class EshipzOrchestrator():
     @agent
     def tracking_agent(self) -> Agent:
         return Agent(
-            config=self.agents_config['tracking_agent'],
+           config=self.agents_config['tracking_agent'],
+            tools=[LogisticsTools.network_manifest_ping], # Add the tool here
             llm=self.gemini_llm,
             verbose=True
         )

@@ -16,8 +16,9 @@ booking_task:
 
 tracking_task:
   description: >
+    Use the network_manifest_ping tool to verify the AWB on the server.
     Create a tracking timeline for the AWB generated. Predict 3 milestones: 
     'Manifested', 'In Transit', and 'Out for Delivery'.
   expected_output: >
-    A formatted tracking report for the user.
+    A formatted tracking report including the server response details and the 3-step timeline.
   agent: tracking_agent
