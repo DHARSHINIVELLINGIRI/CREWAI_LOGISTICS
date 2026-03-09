@@ -1,0 +1,6 @@
+[theme]
+primaryColor = "#00D1FF"           # Paxafe Vibrant Cyan
+backgroundColor = "#0B0E14"        # Deep Charcoal background
+secondaryBackgroundColor = "#161B22" # Soft Slate for the sidebar
+textColor = "#D1D5DB"              # Light gray for readability
+font = "sans serif"

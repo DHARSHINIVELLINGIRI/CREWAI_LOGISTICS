@@ -14,11 +14,11 @@ booking_task:
     The generated AWB number and a confirmation that the barcode image was created.
   agent: booking_agent
 
+# src/shipment/config/tasks.yaml
 tracking_task:
   description: >
-    Use the network_manifest_ping tool to verify the AWB on the server.
-    Create a tracking timeline for the AWB generated. Predict 3 milestones: 
-    'Manifested', 'In Transit', and 'Out for Delivery'.
+    Check the current status of the shipment with ID {tracking_id}. 
+    Provide a detailed summary including the last known location and carrier info.
   expected_output: >
-    A formatted tracking report including the server response details and the 3-step timeline.
+    A formatted report of the shipment's current progress and estimated delivery.
   agent: tracking_agent
