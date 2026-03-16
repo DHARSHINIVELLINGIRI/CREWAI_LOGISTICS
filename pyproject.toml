@@ -17,6 +17,8 @@ dependencies = [
     "streamlit>=1.54.0",
     "streamlit-lottie>=0.0.5",
     "streamlit-option-menu>=0.4.0",
+    "mcp[cli]>=1.5.0",
+    "httpx>=0.27.0",
 ]
 
 [project.scripts]

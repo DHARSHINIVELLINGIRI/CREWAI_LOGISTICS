@@ -1712,6 +1712,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/32/c6/13c1a26b47b3f3a3b480783001ada4268917c9f42d78a079c336da2e75e5/mcp-1.23.3-py3-none-any.whl", hash = "sha256:32768af4b46a1b4f7df34e2bfdf5c6011e7b63d7f1b0e321d0fdef4cd6082031", size = 231570, upload-time = "2025-12-09T16:04:35.56Z" },
 ]
 
+[package.optional-dependencies]
+cli = [
+    { name = "python-dotenv" },
+    { name = "typer" },
+]
+
 [[package]]
 name = "mdurl"
 version = "0.1.2"
@@ -3559,8 +3565,10 @@ source = { editable = "." }
 dependencies = [
     { name = "certifi" },
     { name = "crewai", extra = ["google-genai", "tools"] },
+    { name = "httpx" },
     { name = "langchain-google-genai" },
     { name = "litellm" },
+    { name = "mcp", extra = ["cli"] },
     { name = "pillow" },
     { name = "pymongo" },
     { name = "python-barcode" },
@@ -3575,8 +3583,10 @@ dependencies = [
 requires-dist = [
     { name = "certifi", specifier = ">=2026.1.4" },
     { name = "crewai", extras = ["google-genai", "tools"], specifier = "==1.9.1" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "langchain-google-genai", specifier = ">=3.2.0" },
     { name = "litellm", specifier = ">=1.75.3" },
+    { name = "mcp", extras = ["cli"], specifier = ">=1.5.0" },
     { name = "pillow", specifier = ">=12.1.0" },
     { name = "pymongo", extras = ["srv"], specifier = ">=4.16.0" },
     { name = "python-barcode", specifier = ">=0.16.1" },

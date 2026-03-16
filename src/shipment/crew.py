@@ -2,24 +2,29 @@ import os
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from shipment.tools.custom_tools import LogisticsTools
-from shipment.tools.tracking import get_tracking
-# Change this line in crew.py
-from shipment.tools.tracking import get_shipment_status # Match the actual name
+from shipment.tools.tracking import (
+    get_shipment_status,
+    check_carrier_performance,
+    predict_delivery_risk,
+    analyze_route_intelligence,
+    compare_carriers,
+    get_customer_alert_level,
+    generate_logistics_report,
+)
 from dotenv import load_dotenv
-import os
 
-load_dotenv() # This looks for your .env file and loads the keys
+load_dotenv()
+
 @CrewBase
 class EshipzOrchestrator():
     """Eshipz Logistics Orchestrator Crew"""
 
-    # This specific naming fixes the 404 Not Found error
     gemini_llm = LLM(
-        model="gemini/gemini-2.5-flash-lite",# Added 'models/' prefix
+        model="gemini/gemini-2.0-flash",
         api_key=os.getenv("GEMINI_API_KEY"),
         temperature=0.7,
-        max_retries=5,          # Automatically waits and tries again on 429 errors
-        request_timeout=120
+        max_retries=8,
+        request_timeout=180,
     )
 
     @agent
@@ -42,10 +47,21 @@ class EshipzOrchestrator():
     @agent
     def tracking_agent(self) -> Agent:
         return Agent(
-           config=self.agents_config['tracking_agent'],
-            tools=[get_tracking], # Add the tool here
+            config=self.agents_config['tracking_agent'],
+            # 7 advanced specialized tools
+            tools=[
+                get_shipment_status,
+                check_carrier_performance,
+                predict_delivery_risk,
+                analyze_route_intelligence,
+                compare_carriers,
+                get_customer_alert_level,
+                generate_logistics_report,
+            ],
+            llm=self.gemini_llm,
             verbose=True,
-            llm=self.gemini_llm
+            max_iter=8,         # Allow more reasoning iterations
+            memory=True,        # Remember context across tool calls
         )
 
     @task
@@ -66,5 +82,6 @@ class EshipzOrchestrator():
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
-            verbose=True
+            verbose=True,
+            memory=True,        # Shared memory across all agents
         )

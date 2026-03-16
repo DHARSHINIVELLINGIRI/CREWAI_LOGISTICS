@@ -1,24 +1,96 @@
 carrier_selection_task:
   description: >
-    Analyze the shipment details: Weight: {weight}, Destination: {destination}, Priority: {priority}.
-    Compare top carriers (BlueDart, Delhivery, FedEx) and pick the most suitable one.
+    You are selecting the optimal carrier for a shipment with these parameters:
+    Weight: {weight}kg | Source: {source} | Destination: {destination} | Priority: {priority}
+
+    Perform a rigorous analysis comparing BlueDart, FedEx, Delhivery, DTDC, and Eshipz Express.
+    Consider: cost-per-kg zones, distance tiers, SLA days, reliability scores, and whether
+    the priority level warrants a premium carrier.
+
+    Provide a structured recommendation with:
+    1. Selected carrier and why
+    2. Runner-up option
+    3. Carriers ruled out and the specific reasons
   expected_output: >
-    A recommendation of the best carrier with a brief reason why.
+    A professional carrier selection report with:
+    - Primary recommendation with justification
+    - Cost-benefit analysis
+    - Risk considerations for the selected carrier
+    - Alternative option with comparison
   agent: planning_agent
 
 booking_task:
   description: >
-    Using the carrier picked in the previous task, generate a unique AWB number 
-    and then use the barcode tool to create the 'shipping_label.png'.
+    The carrier has been selected in the previous task. Now execute the full
+    booking and documentation workflow:
+
+    1. Generate a unique, carrier-prefixed AWB number using awb_generator
+    2. Create the physical scannable barcode label using generate_barcode
+    3. Confirm the digital manifest is complete
+
+    The shipment details: {weight}kg from {source} to {destination}, Priority: {priority}
   expected_output: >
-    The generated AWB number and a confirmation that the barcode image was created.
+    A complete booking confirmation containing:
+    - Generated AWB number (format: XXX-XXXXXXXXXX)
+    - Barcode generation confirmation (shipping_label.png)
+    - Complete digital shipment manifest summary
+    - Next steps for the pick-up team
   agent: booking_agent
 
-# src/shipment/config/tasks.yaml
 tracking_task:
   description: >
-    Check the current status of the shipment with ID {tracking_id}. 
-    Provide a detailed summary including the last known location and carrier info.
+    You are the most advanced logistics intelligence agent in the Eshipz network.
+    A shipment has just been booked from {source} to {destination} via the selected carrier.
+    Weight: {weight}kg | Priority: {priority}
+
+    Execute a COMPREHENSIVE 360° shipment intelligence analysis using ALL your available tools:
+
+    STEP 1 — ROUTE INTELLIGENCE
+    Call analyze_route_intelligence({source}, {destination}) to assess the corridor,
+    congestion levels, peak hours, and optimal dispatch timing.
+
+    STEP 2 — CARRIER DEEP-DIVE
+    Call check_carrier_performance for the carrier selected by the planning agent.
+    Extract reliability grade, on-time rate, average delay, and SLA details.
+
+    STEP 3 — COMPETITIVE BENCHMARK
+    Call compare_carriers({destination}, {weight}, {priority}) to show how the
+    selected carrier ranks vs all alternatives.
+
+    STEP 4 — MULTI-FACTOR RISK ASSESSMENT
+    Call predict_delivery_risk with the carrier, {destination}, and {priority}.
+    Provide a granular breakdown of every risk factor contributing to the score.
+
+    STEP 5 — CUSTOMER ALERT CLASSIFICATION
+    Based on the risk level from Step 4, call get_customer_alert_level to
+    determine GREEN/YELLOW/RED status and generate customer communication.
+
+    STEP 6 — EXECUTIVE INTELLIGENCE REPORT
+    Call generate_logistics_report to produce the final comprehensive report
+    combining all findings above.
+
+    Present every tool output in full — do NOT summarize or truncate tool results.
   expected_output: >
-    A formatted report of the shipment's current progress and estimated delivery.
+    A complete, professional 360° Shipment Intelligence Report including:
+
+    ═══ SECTION 1: ROUTE ANALYSIS ═══
+    Full route intelligence output with congestion data
+
+    ═══ SECTION 2: CARRIER INTELLIGENCE ═══
+    Full carrier performance report with grades and metrics
+
+    ═══ SECTION 3: CARRIER BENCHMARKS ═══
+    Full comparison table of all carriers
+
+    ═══ SECTION 4: DELAY RISK ASSESSMENT ═══
+    Full multi-factor risk prediction with visual risk bar
+
+    ═══ SECTION 5: CUSTOMER ALERT STATUS ═══
+    Alert level classification and customer communication templates
+
+    ═══ SECTION 6: EXECUTIVE SUMMARY ═══
+    Full logistics intelligence report with all KPIs
+
+    This report should be detailed, data-rich, and immediately actionable by
+    both the operations team and the customer service team.
   agent: tracking_agent
