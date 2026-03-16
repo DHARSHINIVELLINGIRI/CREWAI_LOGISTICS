@@ -7,60 +7,104 @@ from typing import Dict, List
 import math
 
 # ── City Hub Definitions ───────────────────────────────────────────────────────
-INDIA_CITIES: Dict[str, Dict] = {
-    "Delhi":          {"lat": 28.6139,  "lon": 77.2090,  "zone": "North",  "congestion": 0.80},
-    "Mumbai":         {"lat": 19.0760,  "lon": 72.8777,  "zone": "West",   "congestion": 0.85},
-    "Chennai":        {"lat": 13.0827,  "lon": 80.2707,  "zone": "South",  "congestion": 0.75},
-    "Bangalore":      {"lat": 12.9716,  "lon": 77.5946,  "zone": "South",  "congestion": 0.78},
-    "Hyderabad":      {"lat": 17.3850,  "lon": 78.4867,  "zone": "South",  "congestion": 0.72},
-    "Kolkata":        {"lat": 22.5726,  "lon": 88.3639,  "zone": "East",   "congestion": 0.70},
-    "Ahmedabad":      {"lat": 23.0225,  "lon": 72.5714,  "zone": "West",   "congestion": 0.65},
-    "Pune":           {"lat": 18.5204,  "lon": 73.8567,  "zone": "West",   "congestion": 0.68},
-    "Nagpur":         {"lat": 21.1458,  "lon": 79.0882,  "zone": "Central","congestion": 0.55},
-    "Jaipur":         {"lat": 26.9124,  "lon": 75.7873,  "zone": "North",  "congestion": 0.60},
-    "Lucknow":        {"lat": 26.8467,  "lon": 80.9462,  "zone": "North",  "congestion": 0.60},
-    "Coimbatore":     {"lat": 11.0168,  "lon": 76.9558,  "zone": "South",  "congestion": 0.55},
-    "Madurai":        {"lat":  9.9252,  "lon": 78.1198,  "zone": "South",  "congestion": 0.50},
-    "Trichy":         {"lat": 10.7905,  "lon": 78.7047,  "zone": "South",  "congestion": 0.45},
-    "Bhopal":         {"lat": 23.2599,  "lon": 77.4126,  "zone": "Central","congestion": 0.50},
-    "Kochi":          {"lat":  9.9312,  "lon": 76.2673,  "zone": "South",  "congestion": 0.60},
-    "Surat":          {"lat": 21.1702,  "lon": 72.8311,  "zone": "West",   "congestion": 0.62},
-    "Patna":          {"lat": 25.5941,  "lon": 85.1376,  "zone": "East",   "congestion": 0.55},
-    "Guwahati":       {"lat": 26.1445,  "lon": 91.7362,  "zone": "East",   "congestion": 0.50},
-    "Chandigarh":     {"lat": 30.7333,  "lon": 76.7794,  "zone": "North",  "congestion": 0.58},
-    "Indore":         {"lat": 22.7196,  "lon": 75.8577,  "zone": "Central","congestion": 0.52},
-    "Bhubaneswar":    {"lat": 20.2961,  "lon": 85.8245,  "zone": "East",   "congestion": 0.48},
-    "Visakhapatnam":  {"lat": 17.6868,  "lon": 83.2185,  "zone": "East",   "congestion": 0.55},
-    "Varanasi":       {"lat": 25.3176,  "lon": 82.9739,  "zone": "North",  "congestion": 0.52},
+INDIA_CITIES = {
+
+    # North
+    "Delhi": {"lat": 28.6139, "lon": 77.2090},
+    "Chandigarh": {"lat": 30.7333, "lon": 76.7794},
+    "Jaipur": {"lat": 26.9124, "lon": 75.7873},
+    "Lucknow": {"lat": 26.8467, "lon": 80.9462},
+    "Kanpur": {"lat": 26.4499, "lon": 80.3319},
+    "Agra": {"lat": 27.1767, "lon": 78.0081},
+    "Varanasi": {"lat": 25.3176, "lon": 82.9739},
+    "Dehradun": {"lat": 30.3165, "lon": 78.0322},
+
+    # West
+    "Mumbai": {"lat": 19.0760, "lon": 72.8777},
+    "Pune": {"lat": 18.5204, "lon": 73.8567},
+    "Ahmedabad": {"lat": 23.0225, "lon": 72.5714},
+    "Surat": {"lat": 21.1702, "lon": 72.8311},
+    "Rajkot": {"lat": 22.3039, "lon": 70.8022},
+
+    # Central
+    "Nagpur": {"lat": 21.1458, "lon": 79.0882},
+    "Indore": {"lat": 22.7196, "lon": 75.8577},
+    "Bhopal": {"lat": 23.2599, "lon": 77.4126},
+    "Raipur": {"lat": 21.2514, "lon": 81.6296},
+
+    # East
+    "Kolkata": {"lat": 22.5726, "lon": 88.3639},
+    "Patna": {"lat": 25.5941, "lon": 85.1376},
+    "Ranchi": {"lat": 23.3441, "lon": 85.3096},
+    "Bhubaneswar": {"lat": 20.2961, "lon": 85.8245},
+
+    # North East
+    "Guwahati": {"lat": 26.1445, "lon": 91.7362},
+
+    # South
+    "Chennai": {"lat": 13.0827, "lon": 80.2707},
+    "Bangalore": {"lat": 12.9716, "lon": 77.5946},
+    "Hyderabad": {"lat": 17.3850, "lon": 78.4867},
+    "Coimbatore": {"lat": 11.0168, "lon": 76.9558},
+    "Madurai": {"lat": 9.9252, "lon": 78.1198},
+    "Kochi": {"lat": 9.9312, "lon": 76.2673},
+    "Thiruvananthapuram": {"lat": 8.5241, "lon": 76.9366},
+    "Mysore": {"lat": 12.2958, "lon": 76.6394},
+    "Trichy": {"lat": 10.7905, "lon": 78.7047},
+
+    # Andhra / Telangana
+    "Vijayawada": {"lat": 16.5062, "lon": 80.6480},
+    "Amaravati": {"lat": 16.5417, "lon": 80.5150},
+    "Visakhapatnam": {"lat": 17.6868, "lon": 83.2185},
+
+    # Others
+    "Goa": {"lat": 15.2993, "lon": 74.1240},
+    "Mangalore": {"lat": 12.9141, "lon": 74.8560},
 }
 
-# ── Bidirectional Route Graph ──────────────────────────────────────────────────
-INDIA_ROUTES: Dict[str, List[str]] = {
-    "Delhi":         ["Jaipur", "Lucknow", "Chandigarh", "Agra", "Bhopal", "Nagpur"],
-    "Mumbai":        ["Pune", "Surat", "Ahmedabad", "Hyderabad", "Nagpur", "Goa"],
-    "Chennai":       ["Bangalore", "Coimbatore", "Trichy", "Hyderabad", "Visakhapatnam"],
-    "Bangalore":     ["Chennai", "Hyderabad", "Pune", "Coimbatore", "Kochi"],
-    "Hyderabad":     ["Nagpur", "Chennai", "Bangalore", "Mumbai", "Visakhapatnam", "Bhubaneswar"],
-    "Kolkata":       ["Bhubaneswar", "Patna", "Guwahati", "Varanasi"],
-    "Ahmedabad":     ["Surat", "Mumbai", "Jaipur", "Indore"],
-    "Pune":          ["Mumbai", "Hyderabad", "Bangalore", "Nagpur"],
-    "Nagpur":        ["Hyderabad", "Bhopal", "Pune", "Bhubaneswar", "Raipur"],
-    "Jaipur":        ["Delhi", "Ahmedabad", "Lucknow", "Bhopal"],
-    "Lucknow":       ["Delhi", "Varanasi", "Patna", "Bhopal"],
-    "Coimbatore":    ["Chennai", "Kochi", "Madurai", "Bangalore"],
-    "Madurai":       ["Coimbatore", "Trichy", "Kochi", "Chennai"],
-    "Trichy":        ["Chennai", "Madurai", "Coimbatore"],
-    "Bhopal":        ["Delhi", "Indore", "Nagpur", "Jaipur", "Lucknow"],
-    "Kochi":         ["Coimbatore", "Madurai", "Bangalore"],
-    "Surat":         ["Ahmedabad", "Mumbai"],
-    "Patna":         ["Lucknow", "Kolkata", "Varanasi", "Guwahati"],
-    "Guwahati":      ["Kolkata", "Patna"],
-    "Chandigarh":    ["Delhi"],
-    "Indore":        ["Ahmedabad", "Bhopal"],
-    "Bhubaneswar":   ["Kolkata", "Nagpur", "Visakhapatnam", "Hyderabad"],
-    "Visakhapatnam": ["Chennai", "Hyderabad", "Bhubaneswar"],
-    "Varanasi":      ["Lucknow", "Patna", "Kolkata"],
+
+# ─────────────────────────────────────────────
+# Logistics network connections
+# ─────────────────────────────────────────────
+INDIA_ROUTES = {
+
+    "Delhi": ["Jaipur", "Agra", "Lucknow", "Chandigarh"],
+    "Jaipur": ["Delhi", "Ahmedabad"],
+    "Agra": ["Delhi", "Lucknow"],
+    "Lucknow": ["Agra", "Kanpur", "Varanasi", "Patna"],
+    "Kanpur": ["Lucknow"],
+    "Varanasi": ["Lucknow", "Patna", "Ranchi"],
+    "Patna": ["Lucknow", "Varanasi", "Ranchi"],
+    "Ranchi": ["Patna", "Kolkata"],
+    "Kolkata": ["Ranchi", "Bhubaneswar", "Guwahati"],
+    "Bhubaneswar": ["Kolkata", "Raipur"],
+    "Guwahati": ["Kolkata"],
+
+    "Ahmedabad": ["Jaipur", "Surat", "Indore"],
+    "Surat": ["Ahmedabad", "Mumbai"],
+    "Mumbai": ["Surat", "Pune", "Goa"],
+    "Pune": ["Mumbai", "Hyderabad"],
+    "Goa": ["Mumbai", "Mangalore"],
+    "Mangalore": ["Goa", "Bangalore"],
+    "Bangalore": ["Mangalore", "Mysore", "Hyderabad", "Chennai", "Coimbatore"],
+    "Mysore": ["Bangalore"],
+    "Hyderabad": ["Pune", "Bangalore", "Nagpur", "Vijayawada"],
+    "Nagpur": ["Hyderabad", "Bhopal", "Raipur"],
+    "Bhopal": ["Nagpur", "Indore"],
+    "Indore": ["Bhopal", "Ahmedabad"],
+    "Raipur": ["Nagpur", "Bhubaneswar"],
+    "Vijayawada": ["Hyderabad", "Amaravati", "Chennai"],
+    "Amaravati": ["Vijayawada"],
+    "Chennai": ["Vijayawada", "Bangalore", "Trichy"],
+    "Trichy": ["Chennai", "Madurai", "Coimbatore"],
+    "Madurai": ["Trichy", "Thiruvananthapuram"],
+    "Coimbatore": ["Bangalore", "Trichy", "Kochi"],
+    "Kochi": ["Coimbatore", "Thiruvananthapuram"],
+    "Thiruvananthapuram": ["Kochi", "Madurai"],
+    "Visakhapatnam": ["Vijayawada"],
 }
+
+
 
 # Ensure all referenced cities exist in INDEX (filter to known cities)
 for city in list(INDIA_ROUTES.keys()):
@@ -105,3 +149,9 @@ def route_distance_km(route: List[str]) -> float:
         if c1 and c2:
             total += haversine_km(c1["lat"], c1["lon"], c2["lat"], c2["lon"])
     return round(total, 1)
+# Ensure bidirectional connectivity
+for city, neighbors in list(INDIA_ROUTES.items()):
+    for n in neighbors:
+        INDIA_ROUTES.setdefault(n, [])
+        if city not in INDIA_ROUTES[n]:
+            INDIA_ROUTES[n].append(city)

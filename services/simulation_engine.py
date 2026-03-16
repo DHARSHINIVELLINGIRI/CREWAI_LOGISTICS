@@ -128,6 +128,10 @@ class ShipmentSimulator:
 
         tid   = _next_tkt_id()
         route = bfs_route(source, destination)
+
+# Fallback if route cannot be computed
+        if not route or len(route) < 2:
+            route = [source, destination]
         dist  = route_distance_km(route)
 
         # Speed varies by priority
