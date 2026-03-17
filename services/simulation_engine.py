@@ -112,6 +112,29 @@ class ShipmentSimulator:
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
+    def _get_closest_city(self, city_name: str) -> str:
+        if city_name in INDIA_CITIES: return city_name
+        
+        try:
+            from geopy.geocoders import Nominatim
+            geolocator = Nominatim(user_agent="eshipz_logistics_app")
+            location = geolocator.geocode(f"{city_name}, India")
+            if not location: return "Delhi" # fallback to default if completely unfound
+
+            lat, lon = location.latitude, location.longitude
+            closest_city = "Delhi"
+            min_dist = float('inf')
+
+            for name, coords in INDIA_CITIES.items():
+                dist = haversine_km(lat, lon, coords["lat"], coords["lon"])
+                if dist < min_dist:
+                    min_dist = dist
+                    closest_city = name
+                    
+            return closest_city
+        except Exception:
+            return "Delhi"
+
     def create_shipment(
         self,
         source: str, destination: str,
@@ -119,10 +142,12 @@ class ShipmentSimulator:
         priority: str = "Medium", user_id: int = 0
     ) -> str:
         """Create a new tracked shipment. Returns TKT tracking ID."""
-        if source not in INDIA_CITIES:
-            source = "Delhi"
-        if destination not in INDIA_CITIES:
-            destination = "Mumbai"
+        true_source = source
+        true_destination = destination
+        
+        source = self._get_closest_city(source)
+        destination = self._get_closest_city(destination)
+
         if not carrier:
             carrier = random.choice(CARRIERS)
 
@@ -143,8 +168,8 @@ class ShipmentSimulator:
         shipment = {
             "tracking_id":         tid,
             "user_id":             user_id,
-            "source":              source,
-            "destination":         destination,
+            "source":              true_source,
+            "destination":         true_destination,
             "origin_city":         source,
             "destination_city":    destination,
             "route":               route,

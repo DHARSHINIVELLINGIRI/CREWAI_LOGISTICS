@@ -188,8 +188,23 @@ def get_route_visualization(tracking_id: str, db=None) -> dict:
 
     route        = data.get("route", [])
     route_coords = []
+    
+    # Try using the same geopy logic as simulator if city missing
+    def _fetch_coords(c_name: str):
+        if c_name in INDIA_CITIES: return INDIA_CITIES[c_name]
+        try:
+            from services.simulation_engine import get_simulator
+            # Get simulator instance, reach _get_closest_city just to use its logic (or recreate)
+            from geopy.geocoders import Nominatim
+            geolocator = Nominatim(user_agent="eshipz_logistics_app")
+            loc = geolocator.geocode(f"{c_name}, India")
+            if loc: return {"lat": loc.latitude, "lon": loc.longitude}
+        except:
+            pass
+        return INDIA_CITIES.get("Delhi") # Ultimate fallback
+
     for city in route:
-        node = INDIA_CITIES.get(city, {})
+        node = _fetch_coords(city)
         if node:
             route_coords.append({
                 "city": city, "lat": node["lat"], "lon": node["lon"]
