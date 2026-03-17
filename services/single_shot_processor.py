@@ -67,14 +67,59 @@ def generate_barcode_label(awb: str) -> str:
         import barcode
         from barcode.writer import ImageWriter
         code = barcode.get("code128", awb, writer=ImageWriter())
-        code.save("shipping_label")
-        return "✅ Barcode saved as shipping_label.png"
+        filename = f"shipping_label_{awb}"
+        code.save(filename)
+        
+        # Upload to AWS S3
+        import boto3
+        import os
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_REGION', 'ap-south-1')
+        )
+        bucket_name = os.getenv('AWS_S3_BUCKET', 'eshipz-barcodes')
+        file_path = f"{filename}.png"
+        s3.upload_file(file_path, bucket_name, file_path)
+        url = f"https://{bucket_name}.s3.{os.getenv('AWS_REGION', 'ap-south-1')}.amazonaws.com/{file_path}"
+        
+        return f"✅ Barcode saved and uploaded to S3: {url}"
     except Exception as e:
-        return f"Barcode skipped: {e}"
+        return f"Barcode generation/upload skipped: {e}"
 
+
+def _get_closest_city(city_name: str) -> str:
+    if city_name in INDIA_CITIES: return city_name
+    from geopy.geocoders import Nominatim
+    from services.india_network import haversine_km
+    try:
+        geolocator = Nominatim(user_agent="eshipz_logistics_app")
+        location = geolocator.geocode(f"{city_name}, India")
+        if not location: return "Delhi"
+
+        lat, lon = location.latitude, location.longitude
+        closest_city = "Delhi"
+        min_dist = float('inf')
+
+        for name, coords in INDIA_CITIES.items():
+            dist = haversine_km(lat, lon, coords["lat"], coords["lon"])
+            if dist < min_dist:
+                min_dist = dist
+                closest_city = name
+                
+        return closest_city
+    except Exception:
+        return "Delhi"
 
 # ── Step 3: Build data context (0 API calls) ───────────────────────────────────
 def _build_context(source: str, dest: str, weight: float, priority: str) -> dict:
+    true_source = source
+    true_dest = dest
+    
+    source = _get_closest_city(source)
+    dest = _get_closest_city(dest)
+    
     analytics     = get_analytics()
     perf_rows     = analytics.summary_table()
     route         = bfs_route(source, dest)
@@ -108,8 +153,10 @@ def _build_context(source: str, dest: str, weight: float, priority: str) -> dict
     dst_city = INDIA_CITIES.get(dest, {})
 
     return {
-        "source":       source,
-        "dest":         dest,
+        "source":       true_source,
+        "dest":         true_dest,
+        "mapped_src":   source,
+        "mapped_dst":   dest,
         "weight":       weight,
         "priority":     priority,
         "route":        " → ".join(route),
@@ -157,7 +204,7 @@ def _build_prompt(ctx: dict, awb: str) -> str:
     return f"""You are the Eshipz AI Logistics Intelligence System. Generate a comprehensive shipment report.
 
 SHIPMENT DETAILS:
-- Route: {ctx['source']} ({ctx['src_zone']} Zone) → {ctx['dest']} ({ctx['dst_zone']} Zone)
+- Route: {ctx['source']} (Mapped to {ctx['mapped_src']} Hub, {ctx['src_zone']} Zone) → {ctx['dest']} (Mapped to {ctx['mapped_dst']} Hub, {ctx['dst_zone']} Zone)
 - Distance: {ctx['dist_km']:.0f} km via {ctx['route']}
 - Weight: {ctx['weight']} kg | Priority: {ctx['priority']}
 - AWB Generated: {awb}
@@ -233,6 +280,7 @@ def _rule_based_report(ctx: dict, awb: str) -> str:
 
 ## 🗺️ ROUTE INTELLIGENCE
 **Corridor:** {ctx['route']}
+- True Origin: {ctx['source']} | True Destination: {ctx['dest']}
 - Distance: **{dist:.0f} km** | Est. transit: **{est_h} hours** at {speed} km/h
 - Source congestion: **{ctx['src_cong']*100:.0f}%** | Destination: **{ctx['dst_cong']*100:.0f}%**
 - Best dispatch time: {'Before 7:00 AM (high congestion)' if ctx['src_cong'] > 0.7 else 'Before 8:00 AM (standard)'}
@@ -277,7 +325,34 @@ def process_shipment_single_shot(
     """
     # ── 0 API calls: build context from live data ─────────────────────────────
     ctx     = _build_context(source, destination, weight, priority)
-    carrier = ctx["carriers"][0]["name"]   # best carrier by rule
+    
+    # ── Apply business logic to select best carrier based on weight/priority ──
+    # Default is the highest scored carrier (idx 0)
+    best_carrier_idx = 0
+    
+    if priority in ["High", "Urgent"]:
+        # Find highest score among express carriers
+        for i, c in enumerate(ctx["carriers"]):
+            if c["name"] == "Delhivery" or c["premium"]:
+                best_carrier_idx = i
+                break
+    elif weight <= 2.0:
+        for i, c in enumerate(ctx["carriers"]):
+            if c["name"] == "BlueDart":
+                best_carrier_idx = i
+                break
+    elif 2.0 < weight <= 5.0:
+        for i, c in enumerate(ctx["carriers"]):
+            if c["name"] == "DTDC":
+                best_carrier_idx = i
+                break
+    elif weight > 5.0:
+        for i, c in enumerate(ctx["carriers"]):
+            if c["name"] == "FedEx":
+                best_carrier_idx = i
+                break
+                
+    carrier = ctx["carriers"][best_carrier_idx]["name"]
 
     # ── 0 API calls: generate AWB + barcode ───────────────────────────────────
     awb         = generate_awb(carrier)
