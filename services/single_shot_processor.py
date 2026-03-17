@@ -67,14 +67,30 @@ def generate_barcode_label(awb: str) -> str:
         import barcode
         from barcode.writer import ImageWriter
         code = barcode.get("code128", awb, writer=ImageWriter())
-        code.save("shipping_label")
-        return "✅ Barcode saved as shipping_label.png"
+        filename = f"shipping_label_{awb}"
+        code.save(filename)
+        
+        # Upload to AWS S3
+        import boto3
+        import os
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_REGION', 'ap-south-1')
+        )
+        bucket_name = os.getenv('AWS_S3_BUCKET', 'eshipz-barcodes')
+        file_path = f"{filename}.png"
+        s3.upload_file(file_path, bucket_name, file_path)
+        url = f"https://{bucket_name}.s3.{os.getenv('AWS_REGION', 'ap-south-1')}.amazonaws.com/{file_path}"
+        
+        return f"✅ Barcode saved and uploaded to S3: {url}"
     except Exception as e:
-        return f"Barcode skipped: {e}"
+        return f"Barcode generation/upload skipped: {e}"
 
 
 # ── Step 3: Build data context (0 API calls) ───────────────────────────────────
-def _build_context(source: str, dest: str, weight: float, priority: str) -> dict:
+def _build_context(source: str, dest: str, weight: float, priority: str, exclude_bluedart: bool = False) -> dict:
     analytics     = get_analytics()
     perf_rows     = analytics.summary_table()
     route         = bfs_route(source, dest)
@@ -277,7 +293,34 @@ def process_shipment_single_shot(
     """
     # ── 0 API calls: build context from live data ─────────────────────────────
     ctx     = _build_context(source, destination, weight, priority)
-    carrier = ctx["carriers"][0]["name"]   # best carrier by rule
+    
+    # ── Apply business logic to select best carrier based on weight/priority ──
+    # Default is the highest scored carrier (idx 0)
+    best_carrier_idx = 0
+    
+    if priority in ["High", "Urgent"]:
+        # Find highest score among express carriers
+        for i, c in enumerate(ctx["carriers"]):
+            if c["name"] == "Delhivery" or c["premium"]:
+                best_carrier_idx = i
+                break
+    elif weight <= 2.0:
+        for i, c in enumerate(ctx["carriers"]):
+            if c["name"] == "BlueDart":
+                best_carrier_idx = i
+                break
+    elif 2.0 < weight <= 5.0:
+        for i, c in enumerate(ctx["carriers"]):
+            if c["name"] == "DTDC":
+                best_carrier_idx = i
+                break
+    elif weight > 5.0:
+        for i, c in enumerate(ctx["carriers"]):
+            if c["name"] == "FedEx":
+                best_carrier_idx = i
+                break
+                
+    carrier = ctx["carriers"][best_carrier_idx]["name"]
 
     # ── 0 API calls: generate AWB + barcode ───────────────────────────────────
     awb         = generate_awb(carrier)

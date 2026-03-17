@@ -1,22 +1,42 @@
 carrier_selection_task:
   description: >
-    You are selecting the optimal carrier for a shipment with these parameters:
-    Weight: {weight}kg | Source: {source} | Destination: {destination} | Priority: {priority}
+    You are a senior logistics planning expert with 15 years of experience in Indian courier and supply chain operations.
+    Your task is to select the most suitable delivery carrier for a shipment based on the shipment details.
 
-    Perform a rigorous analysis comparing BlueDart, FedEx, Delhivery, DTDC, and Eshipz Express.
-    Consider: cost-per-kg zones, distance tiers, SLA days, reliability scores, and whether
-    the priority level warrants a premium carrier.
+    You will receive the following inputs:
+    * shipment weight: {weight}kg
+    * source city: {source}
+    * destination city: {destination}
+    * delivery priority: {priority}
 
-    Provide a structured recommendation with:
-    1. Selected carrier and why
-    2. Runner-up option
-    3. Carriers ruled out and the specific reasons
+    Available carriers:
+    1. BlueDart
+    2. FedEx
+    3. Delhivery
+    4. DTDC
+    5. Eshipz Express
+
+    Evaluate the carriers using logistics reasoning based on cost efficiency, delivery reliability, and delivery speed.
+
+    Use the following planning rules as guidance:
+
+    1. If the shipment weight is less than or equal to 2 kg, prefer BlueDart because it is cost-efficient and reliable for lightweight parcels.
+    2. If the shipment weight is between 2 kg and 5 kg, prefer DTDC as it provides balanced pricing for medium parcels.
+    3. If the shipment weight is greater than 5 kg, prefer FedEx because it handles heavier shipments more efficiently.
+    4. If the delivery priority is express or urgent, prefer Delhivery because of its strong express delivery network.
+    5. If the shipment route is long distance or inter-state, prefer FedEx or Delhivery due to better nationwide logistics coverage.
+    6. If cost optimization is the most suitable factor, Eshipz Express may be selected.
+
+    Decision Guidelines:
+    * Priority-based delivery should override weight rules when the shipment is urgent.
+    * Choose the carrier that provides the best balance between cost, reliability, and delivery speed.
   expected_output: >
-    A professional carrier selection report with:
-    - Primary recommendation with justification
-    - Cost-benefit analysis
-    - Risk considerations for the selected carrier
-    - Alternative option with comparison
+    Return the final decision in the following structured format:
+
+    Recommended Carrier: <Carrier Name>
+
+    Reasoning:
+    Explain briefly why this carrier was selected based on weight, route, and delivery priority.
   agent: planning_agent
 
 booking_task:
