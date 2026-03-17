@@ -89,8 +89,37 @@ def generate_barcode_label(awb: str) -> str:
         return f"Barcode generation/upload skipped: {e}"
 
 
+def _get_closest_city(city_name: str) -> str:
+    if city_name in INDIA_CITIES: return city_name
+    from geopy.geocoders import Nominatim
+    from services.india_network import haversine_km
+    try:
+        geolocator = Nominatim(user_agent="eshipz_logistics_app")
+        location = geolocator.geocode(f"{city_name}, India")
+        if not location: return "Delhi"
+
+        lat, lon = location.latitude, location.longitude
+        closest_city = "Delhi"
+        min_dist = float('inf')
+
+        for name, coords in INDIA_CITIES.items():
+            dist = haversine_km(lat, lon, coords["lat"], coords["lon"])
+            if dist < min_dist:
+                min_dist = dist
+                closest_city = name
+                
+        return closest_city
+    except Exception:
+        return "Delhi"
+
 # ── Step 3: Build data context (0 API calls) ───────────────────────────────────
-def _build_context(source: str, dest: str, weight: float, priority: str, exclude_bluedart: bool = False) -> dict:
+def _build_context(source: str, dest: str, weight: float, priority: str) -> dict:
+    true_source = source
+    true_dest = dest
+    
+    source = _get_closest_city(source)
+    dest = _get_closest_city(dest)
+    
     analytics     = get_analytics()
     perf_rows     = analytics.summary_table()
     route         = bfs_route(source, dest)
@@ -124,8 +153,10 @@ def _build_context(source: str, dest: str, weight: float, priority: str, exclude
     dst_city = INDIA_CITIES.get(dest, {})
 
     return {
-        "source":       source,
-        "dest":         dest,
+        "source":       true_source,
+        "dest":         true_dest,
+        "mapped_src":   source,
+        "mapped_dst":   dest,
         "weight":       weight,
         "priority":     priority,
         "route":        " → ".join(route),
@@ -173,7 +204,7 @@ def _build_prompt(ctx: dict, awb: str) -> str:
     return f"""You are the Eshipz AI Logistics Intelligence System. Generate a comprehensive shipment report.
 
 SHIPMENT DETAILS:
-- Route: {ctx['source']} ({ctx['src_zone']} Zone) → {ctx['dest']} ({ctx['dst_zone']} Zone)
+- Route: {ctx['source']} (Mapped to {ctx['mapped_src']} Hub, {ctx['src_zone']} Zone) → {ctx['dest']} (Mapped to {ctx['mapped_dst']} Hub, {ctx['dst_zone']} Zone)
 - Distance: {ctx['dist_km']:.0f} km via {ctx['route']}
 - Weight: {ctx['weight']} kg | Priority: {ctx['priority']}
 - AWB Generated: {awb}
@@ -249,6 +280,7 @@ def _rule_based_report(ctx: dict, awb: str) -> str:
 
 ## 🗺️ ROUTE INTELLIGENCE
 **Corridor:** {ctx['route']}
+- True Origin: {ctx['source']} | True Destination: {ctx['dest']}
 - Distance: **{dist:.0f} km** | Est. transit: **{est_h} hours** at {speed} km/h
 - Source congestion: **{ctx['src_cong']*100:.0f}%** | Destination: **{ctx['dst_cong']*100:.0f}%**
 - Best dispatch time: {'Before 7:00 AM (high congestion)' if ctx['src_cong'] > 0.7 else 'Before 8:00 AM (standard)'}
