@@ -184,7 +184,9 @@ def get_user_shipments(user_id: int) -> List[Dict[str, Any]]:
     """Return shipments belonging to a specific user."""
     conn = get_conn()
     rows = conn.execute(
-        "SELECT * FROM user_shipments WHERE user_id = ? ORDER BY created_at DESC",
+        """SELECT id, tracking_id, user_id, source, destination, weight, priority, carrier, awb, status, agent_output, 
+                  datetime(created_at, 'localtime') as created_at 
+           FROM user_shipments WHERE user_id = ? ORDER BY created_at DESC""",
         (user_id,)
     ).fetchall()
     conn.close()
@@ -195,7 +197,8 @@ def get_all_shipments() -> List[Dict[str, Any]]:
     """Admin-only: return all shipments with user info."""
     conn = get_conn()
     rows = conn.execute(
-        """SELECT us.*, u.name as user_name, u.email as user_email
+        """SELECT us.id, us.tracking_id, us.user_id, us.source, us.destination, us.weight, us.priority, us.carrier, us.awb, us.status, us.agent_output,
+                  datetime(us.created_at, 'localtime') as created_at, u.name as user_name, u.email as user_email
            FROM user_shipments us
            LEFT JOIN users u ON us.user_id = u.id
            ORDER BY us.created_at DESC"""
