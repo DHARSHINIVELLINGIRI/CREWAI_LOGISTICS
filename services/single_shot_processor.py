@@ -1,6 +1,5 @@
 """
 Single-Shot Shipment Processor — 1 API call replaces 6.
-
 Architecture:
   OLD: planning_agent (LLM) + booking_agent (LLM) + tracking_agent (LLM × 4)
        = ~6 API calls
@@ -48,7 +47,7 @@ CARRIER_SLA = {
     "FedEx":          {"max_days": 3, "premium": True,  "coverage": "International"},
     "Delhivery":      {"max_days": 4, "premium": False, "coverage": "Pan-India"},
     "DTDC":           {"max_days": 5, "premium": False, "coverage": "Regional"},
-    "Eshipz Express": {"max_days": 3, "premium": True,  "coverage": "South India"},
+    "eShipz Express": {"max_days": 3, "premium": True,  "coverage": "South India"},
 }
 
 CARRIERS = list(CARRIER_SLA.keys())
@@ -201,7 +200,7 @@ def _build_prompt(ctx: dict, awb: str) -> str:
         f"sla={c['sla_days']}d, score={c['score']:.3f}"
         for i, c in enumerate(ctx["carriers"])
     )
-    return f"""You are the Eshipz AI Logistics Intelligence System. Generate a comprehensive shipment report.
+    return f"""You are the eShipz AI Logistics Intelligence System. Generate a comprehensive shipment report.
 
 SHIPMENT DETAILS:
 - Route: {ctx['source']} (Mapped to {ctx['mapped_src']} Hub, {ctx['src_zone']} Zone) → {ctx['dest']} (Mapped to {ctx['mapped_dst']} Hub, {ctx['dst_zone']} Zone)

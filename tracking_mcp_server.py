@@ -1,5 +1,5 @@
 """
-Eshipz Tracking MCP Server - CONNECTED TO MONGODB
+eShipz Tracking MCP Server - CONNECTED TO MONGODB
 Reads real shipments from MongoDB database, not hardcoded data
 """
 

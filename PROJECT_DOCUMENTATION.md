@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Eshipz AI** is an intelligent logistics and shipment management platform that combines AI-driven decision-making with real-time tracking. The project demonstrates a production-grade integration of **CrewAI**—a framework for multi-agent AI orchestration—with a full-stack logistics system.
+**eShipz AI** is an intelligent logistics and shipment management platform that combines AI-driven decision-making with real-time tracking. The project demonstrates a production-grade integration of **CrewAI**—a framework for multi-agent AI orchestration—with a full-stack logistics system.
 
 **Core Purpose:**
 - Automate three critical logistics workflow stages: **carrier selection → shipment booking → comprehensive tracking intelligence**
@@ -34,7 +34,7 @@ The project executes a **sequential, multi-agent pipeline** defined in `src/ship
 ## Key Features & Functionalities
 
 ### A. Carrier Intelligence & Selection
-- Real-time carrier performance scoring (BlueDart, FedEx, Delhivery, DTDC, Eshipz Express)
+- Real-time carrier performance scoring (BlueDart, FedEx, Delhivery, DTDC, eShipz Express)
 - On-time delivery rates, average delays, reliability grades (A+, A, B+, B)
 - SLA compliance tracking and breach risk assessment
 - Cost-per-kg analysis and zone-based pricing optimization
@@ -84,7 +84,7 @@ The project executes a **sequential, multi-agent pipeline** defined in `src/ship
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    CREWAI ORCHESTRATION LAYER                         │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │ EshipzOrchestrator (Crew).crew()                             │   │
+│  │ eShipzOrchestrator (Crew).crew()                             │   │
 │  │ ├─ Planning Agent   → Carrier Selection Task                 │   │
 │  │ ├─ Booking Agent    → Booking & AWB Generation Task          │   │
 │  │ └─ Tracking Agent   → 360° Intelligence Report Task          │   │
@@ -147,8 +147,8 @@ From `src/shipment/crew.py`:
 
 ```python
 @CrewBase
-class EshipzOrchestrator():
-    """Eshipz Logistics Orchestrator Crew"""
+class eShipzOrchestrator():
+    """eShipz Logistics Orchestrator Crew"""
 
     gemini_llm = LLM(
         model="gemini/gemini-2.0-flash",
@@ -222,7 +222,7 @@ class EshipzOrchestrator():
 The Planning Agent is the first agent in the sequential pipeline, responsible for analyzing shipment parameters and recommending the optimal carrier based on real-time cost analysis, route efficiency, carrier SLA compliance, and delivery speed benchmarks.
 
 **Key Features:**
-- **Multi-Carrier Analysis:** Compares 5 carriers (BlueDart, FedEx, Delhivery, DTDC, Eshipz Express) simultaneously
+- **Multi-Carrier Analysis:** Compares 5 carriers (BlueDart, FedEx, Delhivery, DTDC, eShipz Express) simultaneously
 - **Cost Optimization:** Analyzes cost-per-kg, distance zones, and service level agreements
 - **Performance Benchmarking:** Evaluates historical on-time delivery rates and reliability scores
 - **Priority Consideration:** Factors in shipment priority (High/Medium/Low) for SLA matching
@@ -247,7 +247,7 @@ planning_agent:
     optimal carrier based on real-time cost analysis, route efficiency,
     carrier SLA compliance, and delivery speed benchmarks.
   backstory: >
-    You are a 15-year veteran logistics strategist at Eshipz with deep
+    You are a 15-year veteran logistics strategist at eShipz with deep
     expertise in supply chain economics. You have personally negotiated
     carrier contracts with BlueDart, FedEx, Delhivery, and DTDC. You
     analyze cost-per-kg, distance zones, service level agreements, and

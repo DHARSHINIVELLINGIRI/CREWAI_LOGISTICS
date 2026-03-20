@@ -21,7 +21,7 @@ def render_auth_page():
         <h1 style="background: linear-gradient(to right, #00D1FF, #FFFFFF);
                    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
                    font-size: 2.8rem; font-weight: 800; margin-bottom: 0;">
-            🚚 Eshipz AI
+            🚚 eShipz AI
         </h1>
         <p style="color: #94A3B8; font-size: 1rem; margin-top: 4px;">
             Intelligent Logistics Platform — Sign in to continue
@@ -86,6 +86,6 @@ def render_auth_page():
     # ── Footer ────────────────────────────────────────────────────────────────
     st.markdown("""
     <div style="text-align:center; margin-top: 3rem; color: #4B5563; font-size: 0.8rem;">
-        Eshipz AI Logistics Platform · Secured with SHA-256 Encryption
+        eShipz AI Logistics Platform · Secured with SHA-256 Encryption
     </div>
     """, unsafe_allow_html=True)

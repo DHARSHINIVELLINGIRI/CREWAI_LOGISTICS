@@ -14,7 +14,7 @@ CARRIER_RELIABILITY: Dict[str, float] = {
     "FedEx":          0.93,
     "Delhivery":      0.88,
     "DTDC":           0.82,
-    "Eshipz Express": 0.90,
+    "eShipz Express": 0.90,
 }
 
 # ── Route Congestion Index (higher = more likely delay) ───────────────────────

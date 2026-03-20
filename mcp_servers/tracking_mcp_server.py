@@ -48,7 +48,7 @@ from services.tracking_service import (
 from services.carrier_analytics import get_analytics
 
 # ── Create the MCP server ─────────────────────────────────────────────────────
-mcp = FastMCP("EshipzLogisticsTracker")
+mcp = FastMCP("eShipzLogisticsTracker")
 
 
 # ── Tool 1: track_shipment ────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ def get_carrier_performance_tool(carrier_name: str = "") -> dict:
 
     Args:
         carrier_name: Optional. Carrier name like 'BlueDart', 'FedEx',
-                      'Delhivery', 'DTDC', 'Eshipz Express'.
+                      'Delhivery', 'DTDC', 'eShipz Express'.
                       If empty, returns all carriers.
 
     Returns:
@@ -186,7 +186,7 @@ def list_active_shipments_tool() -> dict:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("🚀 EshipzLogisticsTracker MCP Server starting...")
+    print("🚀 eShipzLogisticsTracker MCP Server starting...")
     print("   Transport: stdio")
     print("   Tools: track_shipment, get_tracking_history, predict_delay,")
     print("          get_route_visualization, get_carrier_performance,")

@@ -113,7 +113,7 @@ label p {
     box-shadow: 0 4px 15px rgba(98, 93, 245, 0.3) !important;
 }
 
-/* Sidebar Title (Eshipz AI Logistics) */
+/* Sidebar Title (eShipz AI Logistics) */
 [data-testid="stSidebar"] h1, .sidebar-title {
     color: #060101 !important; /* Soft "Bright White" */
     font-weight: 700 !important;

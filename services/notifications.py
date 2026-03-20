@@ -184,7 +184,7 @@ CREATE INDEX IF NOT EXISTS idx_admin_notif_assigned
     ON admin_notifications(is_assigned, created_at);
 """
 
-CARRIERS = ["BlueDart", "Delhivery", "FedEx", "DTDC", "Eshipz Express"]
+CARRIERS = ["BlueDart", "Delhivery", "FedEx", "DTDC", "eShipz Express"]
 
 
 def _init_admin_notifications_table():

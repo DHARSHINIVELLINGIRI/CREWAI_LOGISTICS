@@ -43,8 +43,8 @@ def classify_intent(query: str) -> IntentType:
 
 
 def extract_tracking_id(query: str) -> str | None:
-    """Extract SHP-XXXXXX pattern from query text."""
-    match = re.search(r"SHP-\d{6}", query, re.IGNORECASE)
+    """Extract TKTXXXXXX pattern from query text."""
+    match = re.search(r"TKT\d{6}", query, re.IGNORECASE)
     return match.group(0).upper() if match else None
 
 
@@ -105,9 +105,9 @@ class LLMRouter:
             msg = data["message"]
         else:
             msg = (
-                f"📍 **{tid}** is at **{data['current_city']}**, heading to **{data['next_city']}**.\n"
-                f"Status: **{data['status']}** | Speed: {data['speed_kmph']:.0f} km/h\n"
-                f"Last updated: {data['last_updated']}"
+                f"📍 **{tid}** is at **{data['current_city']}**, heading to **{data['destination']}**.\n"
+                f"Status: **{data['status']}**\n"
+                f"Last updated: {data.get('last_updated', '')}"
             )
         return {"intent": "tracking", "agent": "Tracking Agent (MCP)",
                 "response": msg, "data": data, "timestamp": ts}
@@ -155,11 +155,11 @@ class LLMRouter:
     def _handle_general(self, query: str, ts: str) -> Dict[str, Any]:
         msg = (
             "🤖 I'm your **Logistics AI Assistant**. I can help you with:\n"
-            "• **Track** a shipment (e.g. 'Where is SHP-123456?')\n"
-            "• **Delay prediction** (e.g. 'Will SHP-123456 be delayed?')\n"
+            "• **Track** a shipment (e.g. 'Where is TKT123456?')\n"
+            "• **Delay prediction** (e.g. 'Will TKT123456 be delayed?')\n"
             "• **Carrier analytics** (e.g. 'Show BlueDart performance')\n"
             "• **Booking** — use the New Shipment page\n\n"
-            "Please include a valid tracking ID (SHP-XXXXXX) for shipment queries."
+            "Please include a valid tracking ID (TKTXXXXXX) for shipment queries."
         )
         return {"intent": "general", "agent": "LLM Router",
                 "response": msg, "data": {}, "timestamp": ts}

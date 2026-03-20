@@ -90,7 +90,7 @@ def _save_history(tracking_id: str, city: str, lat: float, lon: float, status: s
 
 
 # ── Carriers ───────────────────────────────────────────────────────────────────
-CARRIERS = ["BlueDart", "Delhivery", "FedEx", "DTDC", "Eshipz Express"]
+CARRIERS = ["BlueDart", "Delhivery", "FedEx", "DTDC", "eShipz Express"]
 
 
 # ── Simulator ─────────────────────────────────────────────────────────────────
@@ -271,8 +271,8 @@ class ShipmentSimulator:
         if not tid or tid in self._shipments:
             return False
 
-        source      = rec.get("source", "Delhi")
-        destination = rec.get("destination", "Mumbai")
+        source      = rec.get("source", "Delhi").strip().title()
+        destination = rec.get("destination", "Mumbai").strip().title()
         if source not in INDIA_CITIES:
             source = "Delhi"
         if destination not in INDIA_CITIES:
@@ -280,16 +280,24 @@ class ShipmentSimulator:
 
         route = bfs_route(source, destination)
         dist  = route_distance_km(route)
-        carrier  = rec.get("carrier", "Eshipz Express")
+        carrier  = rec.get("carrier", "eShipz Express")
         priority = rec.get("priority", "Medium")
         weight   = float(rec.get("weight", 1.0))
         speed    = {"High": 85, "Medium": 65, "Low": 50}.get(priority, 65)
         start    = INDIA_CITIES[source]
 
-        # Re-enter at midpoint of route so it's visually "in progress"
-        mid_leg = max(0, len(route) // 2 - 1)
+        # Re-enter at a random point along the route
+        import hashlib
+        import random
+        
+        # Use a stable hash of the tracking ID to deterministically scatter shipments
+        seed_val = int(hashlib.md5(tid.encode()).hexdigest(), 16)
+        r = random.Random(seed_val)
+        
+        mid_leg = r.randint(0, max(0, len(route) - 2))
         mid_city = route[mid_leg]
         mid_node = INDIA_CITIES.get(mid_city, start)
+        progress_jitter = r.uniform(0.1, 0.9)
 
         restored_status = rec.get("status") or STAGE_IN_TRANSIT
         if restored_status in ("Booked", "Created", None):
@@ -306,8 +314,8 @@ class ShipmentSimulator:
             "destination_city":    destination,
             "route":               route,
             "current_leg":         mid_leg,
-            "leg_progress":        0.5,
-            "interpolation_steps": 5,
+            "leg_progress":        progress_jitter,
+            "interpolation_steps": int(progress_jitter * 10),
             "lat":                 mid_node["lat"],
             "lon":                 mid_node["lon"],
             "current_city":        mid_city,
@@ -500,7 +508,7 @@ def _seed_demo_shipments(sim: ShipmentSimulator):
         ("Chennai",     "Kolkata",      "Delhivery",      5.0,  "Medium"),
         ("Bangalore",   "Hyderabad",    "FedEx",          1.2,  "Low"),
         ("Ahmedabad",   "Lucknow",      "DTDC",           8.0,  "Medium"),
-        ("Kochi",       "Guwahati",     "Eshipz Express", 3.0,  "High"),
+        ("Kochi",       "Guwahati",     "eShipz Express", 3.0,  "High"),
     ]
     for src, dst, carrier, wt, pri in demo:
         try:
