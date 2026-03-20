@@ -1,5 +1,5 @@
 """
-MongoDB Explorer — Built-in database browser for the Eshipz Admin.
+MongoDB Explorer — Built-in database browser for the eShipz Admin.
 Provides a full CRUD interface to MongoDB directly inside the Streamlit app.
 Call render_mongo_explorer(db) from app.py.
 """

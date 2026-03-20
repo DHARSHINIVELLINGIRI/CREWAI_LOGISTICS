@@ -39,7 +39,7 @@ class LogisticsTools:
         return f"{prefix}-{digits}"
     @tool("network_manifest_ping")
     def network_manifest_ping(awb_number: str):
-        """Simulates a network request to the Eshipz Global Manifest Server to check AWB status."""
+        """Simulates a network request to the eShipz Global Manifest Server to check AWB status."""
         # Simulating network latency
         time.sleep(1.5) 
         

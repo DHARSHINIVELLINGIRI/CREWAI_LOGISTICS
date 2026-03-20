@@ -1,5 +1,5 @@
 """
-Eshipz Tracking MCP Server - CONNECTED TO MONGODB
+eShipz Tracking MCP Server - CONNECTED TO MONGODB
 Reads real shipments from MongoDB database, not hardcoded data
 """
 
@@ -19,7 +19,8 @@ load_dotenv()
 mcp = FastMCP("eshipz_tracking")
 
 # MongoDB Connection
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://eshipz_user:6TpAgXcsjeErhHsN@cluster0.phxl9wl.mongodb.net/eshipz_logistics?retryWrites=false&w=majority&ssl=true")
+
+MONGODB_URI = os.getenv("MONGODB_URI")
 
 try:
     client = MongoClient(

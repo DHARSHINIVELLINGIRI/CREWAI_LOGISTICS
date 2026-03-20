@@ -289,7 +289,7 @@ def render_admin_dashboard(db=None):
     # ═══ Tab 3: User Management ═══════════════════════════════════════════════
     with tab_users:
         st.subheader("👥 Registered Users")
-        st.caption("All accounts in the Eshipz platform database.")
+        st.caption("All accounts in the eShipz platform database.")
 
         user_search = st.text_input("🔍 Search by name or email", key="admin_user_search")
         users = search_users(user_search) if user_search else get_all_users()

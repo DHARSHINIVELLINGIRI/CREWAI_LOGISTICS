@@ -1,8 +1,47 @@
 """
-Delay Prediction Module — Provides ML/Heuristic based delay predictions.
+Delay Prediction Module
+Heuristic / lightweight ML model for estimating shipment delay probability.
 """
 
+import math
 import random
+import datetime
+from typing import Dict, Any
+
+# ── Carrier Reliability Scores (0.0 → 1.0, higher = more reliable) ──────────
+CARRIER_RELIABILITY: Dict[str, float] = {
+    "BlueDart":       0.95,
+    "FedEx":          0.93,
+    "Delhivery":      0.88,
+    "DTDC":           0.82,
+    "eShipz Express": 0.90,
+}
+
+# ── Route Congestion Index (higher = more likely delay) ───────────────────────
+ROUTE_CONGESTION: Dict[str, float] = {
+    "Chennai":    0.75,
+    "Coimbatore": 0.60,
+    "Trichy":     0.45,
+    "Salem":      0.40,
+    "Madurai":    0.50,
+    "Dindigul":   0.30,
+    "Vellore":    0.35,
+    "Erode":      0.25,
+}
+
+# ── Time-of-day penalty ─────────────────────
+def _time_penalty() -> float:
+    hour = datetime.datetime.now().hour
+    if 8 <= hour <= 10 or 17 <= hour <= 20:
+        return 0.15
+    if 0 <= hour <= 5:
+        return -0.10
+    return 0.0
+
+
+def _priority_factor(priority: str) -> float:
+    return {"High": -0.10, "Medium": 0.0, "Low": 0.08}.get(priority, 0.0)
+
 
 def predict_delay(
     tracking_id: str,
@@ -10,59 +49,79 @@ def predict_delay(
     speed_kmph: float,
     carrier: str,
     destination: str,
-    priority: str
-) -> dict:
-    """
-    Predicts the likelihood and duration of a shipment delay.
-    Returns a dictionary with probability, minutes, risk level, and reason.
-    """
-    base_prob = 0.05
-    minutes = 0
-    reason = "Normal transit conditions."
-    risk = "Low"
+    priority: str = "Medium",
+    history_delays: int = 0,
+) -> Dict[str, Any]:
 
-    # Higher priority means lower chance of delay as carriers prioritize them
-    if priority == "High" or priority == "Urgent":
-        base_prob += 0.02
-    elif priority == "Low":
-        base_prob += 0.15
+    # Base probability from distance
+    dist_factor = min(distance_km / 1500.0, 0.5)
+
+    # Carrier reliability
+    reliability = CARRIER_RELIABILITY.get(carrier, 0.85)
+    carrier_factor = (1.0 - reliability) * 0.6
+
+    # Congestion
+    congestion = ROUTE_CONGESTION.get(destination, 0.35)
+    congestion_factor = congestion * 0.35
+
+    # Past delays
+    history_factor = min(history_delays * 0.03, 0.15)
+
+    # Time + priority
+    time_factor = _time_penalty()
+    priority_adj = _priority_factor(priority)
+
+    # Final probability
+    raw_prob = (
+        dist_factor +
+        carrier_factor +
+        congestion_factor +
+        history_factor +
+        time_factor +
+        priority_adj +
+        random.uniform(-0.03, 0.03)
+    )
+
+    delay_prob = round(max(0.02, min(raw_prob, 0.92)), 3)
+
+    # Delay minutes
+    avg_delay_min = (delay_prob * distance_km * 0.8) + random.uniform(-10, 15)
+    predicted_delay_min = max(0, round(avg_delay_min))
+
+    # Confidence
+    confidence = round(random.uniform(0.72, 0.94), 2)
+
+    # Risk level
+    if delay_prob < 0.20:
+        risk_level = "Low"
+    elif delay_prob < 0.50:
+        risk_level = "Medium"
     else:
-        base_prob += 0.08
+        risk_level = "High"
 
-    # Longer distances have more variables and higher chance of delay
-    if distance_km > 1500:
-        base_prob += 0.20
-    elif distance_km > 800:
-        base_prob += 0.10
-
-    # Carrier specific weights
-    if carrier in ["BlueDart", "Delhivery"]:
-        base_prob -= 0.05
-    elif carrier == "Eshipz Express":
-        base_prob -= 0.02
-    elif carrier == "FedEx":
-        base_prob -= 0.03
-
-    # Add a bit of randomness
-    prob = max(0.01, min(0.95, base_prob + random.uniform(-0.05, 0.05)))
-
-    # Calculate actual delay if it hits the probability
-    if random.random() < prob:
-        # Expected time is distance / speed
-        expected_hours = distance_km / max(speed_kmph, 1)
-        
-        if prob > 0.3:
-            minutes = int(expected_hours * random.uniform(0.1, 0.3) * 60)
-            reason = "Traffic congestion and operational bottlenecks along the route."
-            risk = "Medium"
-        if prob > 0.6 or distance_km > 2000:
-            minutes = int(expected_hours * random.uniform(0.2, 0.5) * 60)
-            reason = "Severe weather conditions or major route disruptions."
-            risk = "High"
+    # Reason
+    reasons = []
+    if congestion > 0.60:
+        reasons.append(f"high congestion at {destination}")
+    if reliability < 0.88:
+        reasons.append(f"{carrier} reliability is below average")
+    if distance_km > 400:
+        reasons.append("long-distance route")
+    if history_delays > 2:
+        reasons.append("carrier has delay history")
+    if not reasons:
+        reasons.append("route is clear")
 
     return {
-        "delay_probability": round(prob, 2),
-        "predicted_delay_minutes": max(0, minutes),
-        "risk_level": risk,
-        "reason": reason
+        "tracking_id": tracking_id,
+        "delay_probability": delay_prob,
+        "delay_probability_pct": f"{delay_prob * 100:.1f}%",
+        "predicted_delay_minutes": predicted_delay_min,
+        "confidence_score": confidence,
+        "risk_level": risk_level,
+        "reason": "; ".join(reasons),
+        "predicted_delivery_time": (
+            datetime.datetime.now() +
+            datetime.timedelta(minutes=predicted_delay_min)
+        ).strftime("%Y-%m-%d %H:%M"),
     }

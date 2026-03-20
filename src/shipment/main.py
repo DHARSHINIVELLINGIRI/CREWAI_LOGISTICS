@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import sys
 import warnings
-from shipment.crew import EshipzOrchestrator
+from shipment.crew import eShipzOrchestrator
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
@@ -15,7 +15,7 @@ def run():
         'destination': 'Bangalore, India',
         'priority': 'High'
     }
-    EshipzOrchestrator().crew().kickoff(inputs=inputs)
+    eShipzOrchestrator().crew().kickoff(inputs=inputs)
 
 if __name__ == "__main__":
     run()

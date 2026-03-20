@@ -25,7 +25,7 @@ from streamlit_option_menu import option_menu
 load_dotenv()
 
 # MUST be first Streamlit call
-st.set_page_config(page_title="Eshipz AI", layout="wide")
+st.set_page_config(page_title="eShipz AI", layout="wide")
 
 # Apply existing professional CSS (unchanged)
 apply_custom_css()

@@ -40,7 +40,7 @@ CARRIER_SLA = {
     "FedEx":          {"max_days": 3, "premium": True,  "coverage": "International"},
     "Delhivery":      {"max_days": 4, "premium": False, "coverage": "Pan-India"},
     "DTDC":           {"max_days": 5, "premium": False, "coverage": "Regional"},
-    "Eshipz Express": {"max_days": 3, "premium": True,  "coverage": "South India"},
+    "eShipz Express": {"max_days": 3, "premium": True,  "coverage": "South India"},
 }
 
 # ── Route congestion intelligence ─────────────────────────────────────────────
@@ -166,7 +166,7 @@ def check_carrier_performance(carrier_name: str) -> str:
     SLA details, and service coverage.
 
     Use this tool to assess carrier quality and set customer expectations.
-    Input: carrier name (e.g. 'BlueDart', 'FedEx', 'Delhivery', 'DTDC', 'Eshipz Express')
+    Input: carrier name (e.g. 'BlueDart', 'FedEx', 'Delhivery', 'DTDC', 'eShipz Express')
     """
     analytics = _get_analytics()
     sla = CARRIER_SLA.get(carrier_name, {})
@@ -369,7 +369,7 @@ def compare_carriers(destination: str, weight_kg: float, priority: str = "Medium
     Input: destination city, weight in kg, priority level
     """
     analytics = _get_analytics()
-    carriers  = ["BlueDart", "FedEx", "Delhivery", "DTDC", "Eshipz Express"]
+    carriers  = ["BlueDart", "FedEx", "Delhivery", "DTDC", "eShipz Express"]
     rows = []
 
     for c in carriers:
@@ -511,6 +511,6 @@ def generate_logistics_report(
         f"  Communication     : {'Automated updates sufficient' if r_score >= 0.90 else 'Proactive outreach recommended'}\n\n"
         f"{'═'*58}\n"
         f"  Report ID: ESZ-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}\n"
-        f"  Confidence: {min(95, int(r_score * 100))}% | Model: Eshipz-AI-v2\n"
+        f"  Confidence: {min(95, int(r_score * 100))}% | Model: eShipz-AI-v2\n"
         f"{'═'*58}\n"
     )

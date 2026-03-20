@@ -39,7 +39,7 @@ _DEFAULT_CARRIERS = [
         "reliability_score":  0.82,
     },
     {
-        "carrier_name":       "Eshipz Express",
+        "carrier_name":       "eShipz Express",
         "total_shipments":    53,
         "on_time_deliveries": 48,
         "average_delay_min":  14.7,

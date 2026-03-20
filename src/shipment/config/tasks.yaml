@@ -14,7 +14,7 @@ carrier_selection_task:
     2. FedEx
     3. Delhivery
     4. DTDC
-    5. Eshipz Express
+    5. eShipz Express
 
     Evaluate the carriers using logistics reasoning based on cost efficiency, delivery reliability, and delivery speed.
 
@@ -25,7 +25,7 @@ carrier_selection_task:
     3. If the shipment weight is greater than 5 kg, prefer FedEx because it handles heavier shipments more efficiently.
     4. If the delivery priority is express or urgent, prefer Delhivery because of its strong express delivery network.
     5. If the shipment route is long distance or inter-state, prefer FedEx or Delhivery due to better nationwide logistics coverage.
-    6. If cost optimization is the most suitable factor, Eshipz Express may be selected.
+    6. If cost optimization is the most suitable factor, eShipz Express may be selected.
 
     Decision Guidelines:
     * Priority-based delivery should override weight rules when the shipment is urgent.
@@ -59,7 +59,7 @@ booking_task:
 
 tracking_task:
   description: >
-    You are the most advanced logistics intelligence agent in the Eshipz network.
+    You are the most advanced logistics intelligence agent in the eShipz network.
     A shipment has just been booked from {source} to {destination} via the selected carrier.
     Weight: {weight}kg | Priority: {priority}
 

@@ -16,8 +16,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 @CrewBase
-class EshipzOrchestrator():
-    """Eshipz Logistics Orchestrator Crew"""
+class eShipzOrchestrator():
+    """eShipz Logistics Orchestrator Crew"""
 
     gemini_llm = LLM(
         model="gemini/gemini-2.0-flash",

@@ -2,7 +2,6 @@
 User Tracking Dashboard — shows only the logged-in user's shipments.
 Call render_user_dashboard(db, user_id, user_name) from app.py.
 """
-
 import streamlit as st
 import streamlit.components.v1 as components
 import datetime
@@ -149,7 +148,7 @@ def render_user_dashboard(db=None, user_id: int = 0, user_name: str = "User"):
 
         query = st.text_input(
             "Your question",
-            placeholder="e.g. 'Where is SHP-123456?' or 'Will it be delayed?'",
+            placeholder="e.g. 'Where is TKT123456?' or 'Will it be delayed?'",
             key="user_ai_query"
         )
         ask_btn = st.button("💬 Ask", key="user_ask_btn")
@@ -163,9 +162,9 @@ def render_user_dashboard(db=None, user_id: int = 0, user_name: str = "User"):
 
         with st.expander("💡 Example queries"):
             st.markdown("""
-- `Where is my shipment SHP-123456?`
-- `Will SHP-123456 arrive on time?`
-- `Show me the delay risk for SHP-123456`
+- `Where is my shipment TKT123456?`
+- `Will TKT123456 arrive on time?`
+- `Show me the delay risk for TKT123456`
 - `Show BlueDart performance`
             """)
 
@@ -191,19 +190,10 @@ def _render_tracking_result(tracking_id: str, db):
         unsafe_allow_html=True
     )
 
-    c1, c2, c3, c4 = st.columns(4)
-    eta_str = "—"
-    try:
-        eta_dt  = datetime.datetime.fromisoformat(info["eta"])
-        hrs     = max(0.0, (eta_dt - datetime.datetime.now()).total_seconds() / 3600)
-        eta_str = f"{hrs:.1f} h"
-    except Exception:
-        pass
-
+    c1, c2, c3 = st.columns(3)
     c1.metric("📍 Current",     info.get("current_city", "—"))
     c2.metric("🏁 Destination", info.get("destination", "—"))
-    c3.metric("⏱ ETA",         eta_str)
-    c4.metric("🚀 Speed",       f"{info.get('speed_kmph', 0):.0f} km/h")
+    c3.metric("⏱ ETA",         info.get("eta", "—"))
 
     # ── Lifecycle stage progress bar ───────────────────────────────────────────
     current_stage = status
