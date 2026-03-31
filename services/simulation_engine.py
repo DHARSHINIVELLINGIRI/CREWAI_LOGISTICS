@@ -21,6 +21,7 @@ if _root not in sys.path:
 from services.india_network import (
     INDIA_CITIES, INDIA_ROUTES, bfs_route, haversine_km, route_distance_km
 )
+
 from services.lifecycle import (
     compute_lifecycle_status,
     STAGE_CREATED, STAGE_DELIVERED, STAGE_DELAYED, STAGE_IN_TRANSIT,
@@ -77,11 +78,13 @@ def _next_tkt_id() -> str:
 
 
 def _save_history(tracking_id: str, city: str, lat: float, lon: float, status: str):
+    import datetime
+    dt_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         conn = get_conn()
         conn.execute(
-            "INSERT INTO tracking_history (tracking_id, city, latitude, longitude, status) VALUES (?,?,?,?,?)",
-            (tracking_id, city, lat, lon, status)
+            "INSERT INTO tracking_history (tracking_id, city, latitude, longitude, status, timestamp) VALUES (?,?,?,?,?,?)",
+            (tracking_id, city, lat, lon, status, dt_now)
         )
         conn.commit()
         conn.close()

@@ -193,7 +193,7 @@ def _call_gemini_once(prompt: str) -> str:
         return None   # Caller will use rule-based fallback
 
 
-def _build_prompt(ctx: dict, awb: str) -> str:
+def _build_prompt(ctx: dict) -> str:
     carriers_txt = "\n".join(
         f"  {i+1}. {c['name']}: reliability={c['reliability']:.2f}, "
         f"on_time={c['on_time_pct']:.1f}%, avg_delay={c['avg_delay']}min, "
@@ -206,7 +206,7 @@ SHIPMENT DETAILS:
 - Route: {ctx['source']} (Mapped to {ctx['mapped_src']} Hub, {ctx['src_zone']} Zone) → {ctx['dest']} (Mapped to {ctx['mapped_dst']} Hub, {ctx['dst_zone']} Zone)
 - Distance: {ctx['dist_km']:.0f} km via {ctx['route']}
 - Weight: {ctx['weight']} kg | Priority: {ctx['priority']}
-- AWB Generated: {awb}
+- Carrier: Pending Admin Assignment
 - Timestamp: {ctx['timestamp']}
 
 LIVE CARRIER PERFORMANCE DATA:
@@ -219,10 +219,10 @@ ROUTE CONGESTION:
 Generate a structured logistics intelligence report with these EXACTLY labeled sections:
 
 ## 🎯 CARRIER SELECTION
-State the chosen carrier and runner-up. Give 3 specific data-driven reasons.
+State the recommended carrier and runner-up based on the data. Give 3 specific data-driven reasons. Note that final carrier assignment will be done by the Administrator.
 
 ## 📦 BOOKING CONFIRMATION
-Confirm AWB: {awb}. State estimated cost in ₹ (weight × rate per kg). Confirm barcode generated.
+Confirm Booking. State estimated cost in ₹ (weight × rate per kg). Mention that AWB and Barcode will be generated once Admin assigns the delivery partner.
 
 ## 🗺️ ROUTE INTELLIGENCE
 Analyze the {ctx['route']} corridor. Mention congestion, best dispatch time, estimated transit hours.
@@ -243,7 +243,7 @@ Be specific, data-driven, and concise. Total response: 400-600 words max."""
 
 
 # ── Step 5: Rule-based fallback (0 API calls — never fails) ───────────────────
-def _rule_based_report(ctx: dict, awb: str) -> str:
+def _rule_based_report(ctx: dict) -> str:
     best    = ctx["carriers"][0]
     second  = ctx["carriers"][1]
     carrier = best["name"]
@@ -255,8 +255,8 @@ def _rule_based_report(ctx: dict, awb: str) -> str:
     delay_p = round((1 - best["reliability"]) * 100, 1)
     risk    = "Low" if delay_p < 15 else "Medium" if delay_p < 30 else "High"
     alert   = "🟢 GREEN" if risk == "Low" else "🟡 YELLOW" if risk == "Medium" else "🔴 RED"
-    sms_msg = (f"Your {carrier} shipment ({awb}) from {ctx['source']} to {ctx['dest']} "
-               f"is confirmed. ETA: {sla['max_days']} business days.")
+    sms_msg = (f"Your shipment from {ctx['source']} to {ctx['dest']} "
+               f"is confirmed. Carrier pending assignment. ETA: {sla['max_days']} business days.")
 
     carrier_ranks = "\n".join(
         f"  {'🥇' if i==0 else '🥈' if i==1 else '🥉' if i==2 else '  '} "
@@ -266,15 +266,16 @@ def _rule_based_report(ctx: dict, awb: str) -> str:
 
     return f"""
 ## 🎯 CARRIER SELECTION
-**Selected: {carrier}** (Runner-up: {second['name']})
+**Recommended: {carrier}** (Runner-up: {second['name']})
+*Note: Final carrier assignment pending by Admin.*
 1. Highest composite score: {best['score']:.3f} vs {second['score']:.3f}
 2. {best['on_time_pct']:.1f}% on-time delivery rate — best in class for {ctx['priority']} priority
 3. {sla['max_days']}-day SLA commitment{'  + Premium service lane eligible' if sla['premium'] and ctx['priority'] == 'High' else ''}
 
 ## 📦 BOOKING CONFIRMATION
-- **AWB:** `{awb}`
+- **AWB:** Pending Assignment
 - **Estimated Cost:** ₹ {cost} ({ctx['weight']} kg × ₹{round(cost/ctx['weight'],2)}/kg)
-- **Barcode:** shipping_label.png ✅
+- **Barcode:** Will be generated post-assignment format
 - **Departure:** {datetime.datetime.now().strftime('%d %b %Y, %H:%M IST')}
 
 ## 🗺️ ROUTE INTELLIGENCE
@@ -354,25 +355,25 @@ def process_shipment_single_shot(
     carrier = ctx["carriers"][best_carrier_idx]["name"]
 
     # ── 0 API calls: generate AWB + barcode ───────────────────────────────────
-    awb         = generate_awb(carrier)
-    barcode_msg = generate_barcode_label(awb)
+    awb         = ""
+    barcode_msg = "Pending carrier assignment."
 
     # ── 1 API call (or 0 if key missing/quota hit) ────────────────────────────
-    prompt    = _build_prompt(ctx, awb)
+    prompt    = _build_prompt(ctx)
     llm_text  = _call_gemini_once(prompt)
     used_api  = llm_text is not None
 
     if llm_text:
         report = llm_text
-        # Try to extract carrier from LLM response
-        m = re.search(r"Selected:\s*\*?\*?([A-Za-z ]+?)\*?\*?[\s\n\(]", llm_text)
+        # Try to extract recommended carrier from LLM response
+        m = re.search(r"Recommended:\s*\*?\*?([A-Za-z ]+?)\*?\*?[\s\n\(]", llm_text)
         if m:
             found = m.group(1).strip()
             if found in CARRIER_SLA:
                 carrier = found
     else:
         # Fully rule-based — no API call at all
-        report = _rule_based_report(ctx, awb)
+        report = _rule_based_report(ctx)
 
     # ── 0 API calls: start simulation ─────────────────────────────────────────
     tracking_id = ""

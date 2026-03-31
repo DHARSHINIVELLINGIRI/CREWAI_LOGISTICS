@@ -27,6 +27,9 @@ from auth.auth_service import (
     get_all_users, search_users, get_all_shipments,
     update_shipment_status, get_shipment_stats, get_user_count
 )
+from services.notifications import (
+    get_pending_admin_notifications, CARRIERS, assign_carrier
+)
 from services.barcode_service import render_barcode_section
 
 
@@ -147,6 +150,37 @@ def render_admin_dashboard(db=None):
             df = pd.DataFrame(df_rows)
             st.dataframe(df, use_container_width=True, hide_index=True)
 
+            # ── Assign Delivery Partner ──────────────────────────────────────────
+            pending_assignments = get_pending_admin_notifications()
+            if pending_assignments:
+                st.markdown("#### 🚚 Assign Delivery Partner")
+                st.warning(f"{len(pending_assignments)} shipment(s) waiting for carrier assignment.")
+                p_col1, p_col2, p_col3 = st.columns([2, 2, 1])
+                
+                with p_col1:
+                    pend_opts = {p["tracking_id"]: p for p in pending_assignments}
+                    selected_pend_tid = st.selectbox(
+                        "Pending Shipment", 
+                        options=list(pend_opts.keys()),
+                        format_func=lambda x: f"{x} ({pend_opts[x]['source']}→{pend_opts[x]['destination']}, {pend_opts[x]['weight']}kg)",
+                        key="admin_assign_tid"
+                    )
+                with p_col2:
+                    selected_carrier = st.selectbox("Select Carrier", CARRIERS, key="admin_assign_carrier")
+                with p_col3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("✅ Assign", key="admin_assign_btn"):
+                        if selected_pend_tid and selected_carrier:
+                            notif_id = pend_opts[selected_pend_tid]["id"]
+                            if assign_carrier(notif_id, selected_pend_tid, selected_carrier):
+                                st.success(f"Assigned {selected_carrier} to {selected_pend_tid}")
+                                st.rerun()
+                            else:
+                                st.error("Failed to assign carrier.")
+                        else:
+                            st.warning("Please select a shipment and carrier.")
+            
+            st.markdown("---")
             # Status update
             st.markdown("#### ✏️ Update Shipment Status")
             up_col1, up_col2, up_col3 = st.columns([2, 2, 1])
@@ -205,6 +239,7 @@ def render_admin_dashboard(db=None):
                             tracking_id   = barcode_val,
                             show_download = True,
                             compact       = False,
+                            key_suffix    = "admin_hist",
                         )
 
         st.markdown("---")
@@ -282,6 +317,7 @@ def render_admin_dashboard(db=None):
                             tracking_id   = _tid,
                             show_download = True,
                             compact       = False,
+                            key_suffix    = "admin_track",
                         )
         else:
             st.info("No active live shipments.")
