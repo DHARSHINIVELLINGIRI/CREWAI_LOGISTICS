@@ -1106,7 +1106,7 @@ elif page == "Shipment Intelligence":
                 for a in filtered_analyses:
                     table_rows.append({
                         "Order ID": a.get("order_id", "—"),
-                        "AWB / Tracking #": a.get("tracking_number", a.get("order_id", "—")),
+                        "AWB / Tracking #": a.get("awb", a.get("tracking_number", "—")),
                         "Status": _status_emoji(a.get("status", "On-Time")),
                         "Delay (days)": a.get("delay_days", 0),
                         "Checkpoints": a.get("total_checkpoints", 0),
@@ -1136,7 +1136,8 @@ elif page == "Shipment Intelligence":
             st.caption("Click any shipment to expand its full intelligence report — includes issues, prediction, and explanation.")
 
             for a in filtered_analyses:
-                oid = a.get("order_id", a.get("tracking_number", "Unknown"))
+                oid = a.get("order_id", "Unknown")
+                awb = a.get("awb", oid)
                 a_status = a.get("status", "On-Time")
                 a_issues = a.get("issues", [])
                 d_days = a.get("delay_days", 0)
@@ -1148,13 +1149,8 @@ elif page == "Shipment Intelligence":
                 a_prediction = a.get("prediction", "—")
                 a_explanation = a.get("explanation", "—")
 
-                # Build expander title with emoji status
-                exp_title = f"{_status_emoji(a_status)}  📦 {oid}"
-                if trk and trk != oid and trk != "—":
-                    exp_title += f"  ·  AWB: {trk}"
-
-                with st.expander(exp_title, expanded=False):
-                    # Status pills row
+                with st.expander(f"{_status_emoji(a_status)} | {oid} | AWB: {awb}", expanded=False):
+                    st.markdown(f"**Status:** {a_status}")
                     flags = []
                     if a.get("is_delayed"):
                         flags.append('<span class="status-pill pill-delayed">⏱ Delayed</span>')

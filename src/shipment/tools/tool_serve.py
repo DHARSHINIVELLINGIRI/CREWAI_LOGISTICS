@@ -456,18 +456,25 @@ def _run_analysis_pure(shipment: dict) -> dict:
         shipment.get("tag") or shipment.get("status")
         or shipment.get("current_status") or ""
     ).lower()
-    checkpoints = (
+    checkpoints_raw = (
         shipment.get("checkpoints")
         or shipment.get("tracking_events")
         or shipment.get("events")
         or shipment.get("scans")
-        or []
     )
+    if not checkpoints_raw and shipment.get("trackings") and isinstance(shipment["trackings"], list):
+        checkpoints_raw = shipment["trackings"][0].get("checkpoints")
+    checkpoints = checkpoints_raw or []
     order_id = (
         shipment.get("order_id")
         or shipment.get("tracking_number")
         or shipment.get("awb")
         or "Unknown"
+    )
+    awb = (
+        shipment.get("tracking_number")
+        or shipment.get("awb")
+        or order_id
     )
 
     issues = []
@@ -558,13 +565,20 @@ def _run_analysis_pure(shipment: dict) -> dict:
 
     # ── Risk Detection ───────────────────────────────────────────────────────
     failed_attempts = 0
+    out_for_delivery_counts = 0
     for cp in checkpoints:
         cp_tag = (cp.get("tag") or cp.get("status") or cp.get("activity") or "").lower()
         if any(kw in cp_tag for kw in ("failed", "undeliver", "delivery attempt", "not delivered")):
             failed_attempts += 1
+        if any(kw in cp_tag for kw in ("out for delivery", "ofd")):
+            out_for_delivery_counts += 1
+            
     if failed_attempts >= 2:
         is_high_risk = True
         issues.append(f"Repeated delivery failures ({failed_attempts} attempts)")
+
+    if out_for_delivery_counts > 1:
+        issues.append(f"Repeated Out-for-Delivery scans without success ({out_for_delivery_counts} times)")
 
     if any(kw in current_tag for kw in ("rto", "return")):
         is_high_risk = True
@@ -639,6 +653,7 @@ def _run_analysis_pure(shipment: dict) -> dict:
 
     return {
         "order_id": order_id,
+        "awb": awb,
         "status": status_label,
         "is_delayed": is_delayed,
         "is_stuck": is_stuck,

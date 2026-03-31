@@ -81,16 +81,6 @@ def _fetch_eshipz(tracking_id: str) -> dict | None:
     except Exception:
         return None
 
-
-def _get_sim_data(tracking_id: str) -> dict | None:
-    try:
-        _ensure_root()
-        from services.simulation_engine import get_simulator
-        return get_simulator().get_shipment(tracking_id)
-    except Exception:
-        return None
-
-
 def _get_analytics():
     try:
         _ensure_root()
@@ -106,64 +96,69 @@ def _get_analytics():
 @tool("get_shipment_status")
 def get_shipment_status(tracking_number: str) -> str:
     """
-    Retrieves real-time shipment tracking data including current GPS location,
-    movement status, carrier details, speed, and estimated time of arrival (ETA).
+    Retrieves real-time shipment tracking data directly from the eShipz API.
 
     Use this as the FIRST tool when the user asks about a shipment's location
     or current status. Always call this before any analysis tool.
 
     Input: tracking number or AWB as a string (e.g. 'SHP-123456' or 'BLU-4829103847')
     """
-    data = _get_sim_data(tracking_number)
-    if data:
-        route = data.get("route", [])
-        leg   = data.get("current_leg", 0)
-        curr  = route[leg] if leg < len(route) else route[-1]
-        nxt   = route[leg + 1] if leg + 1 < len(route) else "Final Destination"
-        total = len(route) - 1
-        pct   = round(((leg + data.get("leg_progress", 0)) / max(total, 1)) * 100, 1)
-
-        try:
-            eta_dt  = datetime.datetime.fromisoformat(data.get("eta", ""))
-            hrs_rem = max(0, (eta_dt - datetime.datetime.now()).total_seconds() / 3600)
-            eta_str = f"{hrs_rem:.1f} hours ({eta_dt.strftime('%d %b, %H:%M')})"
-        except Exception:
-            eta_str = "Calculating..."
-
-        return (
-            f"╔══ REAL-TIME TRACKING REPORT ══════════════════════╗\n"
-            f"  Tracking ID   : {tracking_number}\n"
-            f"  Status        : {data.get('status', 'In Transit')} ({'🟢' if data.get('status') == 'Delivered' else '🔵'})\n"
-            f"  Carrier       : {data.get('carrier', 'Unknown')}\n"
-            f"  Current City  : {curr}\n"
-            f"  Next Stop     : {nxt}\n"
-            f"  Origin → Dest : {data.get('source', '?')} → {data.get('destination', '?')}\n"
-            f"  GPS Position  : {data.get('lat', 0):.4f}°N, {data.get('lon', 0):.4f}°E\n"
-            f"  Speed         : {data.get('speed_kmph', 0):.1f} km/h\n"
-            f"  Journey       : {pct}% complete\n"
-            f"  Distance      : {data.get('total_distance_km', 0)} km total\n"
-            f"  ETA           : {eta_str}\n"
-            f"  Weight        : {data.get('weight', '?')} kg | Priority: {data.get('priority', '?')}\n"
-            f"  Last Updated  : {data.get('last_updated', 'N/A')[:19]}\n"
-            f"╚══════════════════════════════════════════════════════╝"
-        )
-
-    # Fallback to eShipz API
+    # STRICT ARCHITECTURE: Fetch from eShipz ONLY. NO MongoDB or Simulator fallback.
     api_data = _fetch_eshipz(tracking_number)
+    
     if api_data and "data" in api_data:
         info = api_data["data"]
+        
+        # Determine tracking structure format
+        checkpoints = []
+        if "trackings" in info and info["trackings"]:
+            trackings = info["trackings"][0]
+            if "checkpoints" in trackings:
+                checkpoints = trackings["checkpoints"]
+        elif "checkpoints" in info:
+            checkpoints = info["checkpoints"]
+            
+        cp_report = ""
+        if checkpoints:
+            cp_report = "\n  Recent Checkpoints:\n"
+            for cp in checkpoints[:3]:
+                time = cp.get("checkpoint_time", cp.get("date", "?"))
+                loc = cp.get("city", cp.get("location", "?"))
+                act = cp.get("tag", cp.get("activity", "?"))
+                cp_report += f"    - {time} | {loc} | {act}\n"
+        
+        # Run Python Analysis natively
+        try:
+            from shipment.tools.tool_serve import _run_analysis_pure
+            analysis = _run_analysis_pure(info)
+            status_calc = analysis.get("status", info.get("status", "Processing"))
+            issues_val = "; ".join(analysis.get("issues", [])) or "None"
+            pred_val = analysis.get("prediction", "N/A")
+            expl_val = analysis.get("explanation", "N/A")
+        except Exception:
+            status_calc = info.get("status", "Processing")
+            issues_val = "Analysis unavailable"
+            pred_val = "N/A"
+            expl_val = "N/A"
+        
         return (
-            f"╔══ ESHIPZ API TRACKING REPORT ═══════════════════════╗\n"
+            f"╔══ REAL-TIME TRACKING (eShipz API + Python Intel) ════╗\n"
             f"  Tracking ID : {tracking_number}\n"
-            f"  Status      : {info.get('status', 'Processing')}\n"
-            f"  Carrier     : {info.get('carrier', 'eShipz Partner')}\n"
-            f"  Last Event  : {info.get('last_event', 'Package scanned')}\n"
-            f"  ETA         : {info.get('estimated_delivery', 'TBD')}\n"
+            f"  Status      : {status_calc}\n"
+            f"  Carrier     : {info.get('carrier', info.get('carrier_name', 'eShipz Partner'))}\n"
+            f"  Total Scans : {len(checkpoints) if checkpoints else 0}\n"
+            f"  Last Update : {info.get('last_event', 'Package scanned')}\n"
+            f"  ETA         : {info.get('estimated_delivery_date', info.get('expected_delivery_date', 'TBD'))}\n"
+            f"  ─────────────── INTELLIGENCE ANALYSIS ───────────────\n"
+            f"  Prediction  : {pred_val}\n"
+            f"  Issues      : {issues_val}\n"
+            f"  Explanation : {expl_val}\n"
+            f"{cp_report}"
             f"╚══════════════════════════════════════════════════════╝"
         )
     return (
-        f"⚠️  No tracking data found for '{tracking_number}'.\n"
-        "Please verify the tracking number is correct (format: SHP-XXXXXX or carrier AWB)."
+        f"⚠️  No tracking data found in carrier database for '{tracking_number}'.\n"
+        "Either the shipment is not yet picked up, or the AWB is invalid."
     )
 
 
