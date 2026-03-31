@@ -137,11 +137,13 @@ def save_user_shipment(
 ) -> int:
     """Save a shipment linked to a user. Returns the new shipment id."""
     conn = get_conn()
+    import datetime
+    dt_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     cur  = conn.execute(
         """INSERT INTO user_shipments
-           (tracking_id, user_id, source, destination, weight, priority, carrier, agent_output, awb)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
-        (tracking_id, user_id, source, destination, weight, priority, carrier, agent_output, awb)
+           (tracking_id, user_id, source, destination, weight, priority, carrier, agent_output, awb, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (tracking_id, user_id, source, destination, weight, priority, carrier, agent_output, awb, dt_now)
     )
     conn.commit()
     sid = cur.lastrowid

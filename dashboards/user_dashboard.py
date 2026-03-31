@@ -4,6 +4,8 @@ Call render_user_dashboard(db, user_id, user_name) from app.py.
 """
 import streamlit as st
 import streamlit.components.v1 as components
+from shipment.crew import eShipzOrchestrator
+from shipment.main import run as run_crew
 import datetime
 import sys
 import os
@@ -119,6 +121,7 @@ def render_user_dashboard(db=None, user_id: int = 0, user_name: str = "User"):
                             tracking_id   = barcode_val,
                             show_download = True,
                             compact       = False,
+                            key_suffix    = "history",
                         )
 
             # ── Quick track from history ───────────────────────────────────────
@@ -143,9 +146,92 @@ def render_user_dashboard(db=None, user_id: int = 0, user_name: str = "User"):
 
     # ═══ Tab 3: AI Assistant ══════════════════════════════════════════════════
     with tab_ai:
-        st.subheader("🤖 AI Logistics Assistant")
-        st.caption("Ask anything about your shipments — powered by the LLM Router.")
+        st.subheader("🤖 AI Tracking Assistant")
+        st.caption("Real-time eShipz API · Multi-agent CrewAI · Live checkpoint intelligence")
 
+        from tracking_renderer import render_tracking_output
+
+        col_tid, col_ai_btn = st.columns([4, 1])
+        with col_tid:
+            ai_track_id = st.text_input(
+                "Tracking ID for AI Analysis",
+                value="90001605035",
+                placeholder="e.g. 90001605035",
+                label_visibility="collapsed",
+                key="ai_track_input",
+            )
+        with col_ai_btn:
+            _run_crew_btn = st.button("🤖 Analyse", use_container_width=True, key="dash_crew_btn")
+
+        st.markdown("""
+        <style>
+        .agent-card{background:#12141b;border:1px solid #1e2a45;border-radius:10px;
+                    padding:14px 18px;margin-bottom:10px;}
+        .agent-card .ac-label{font-size:.68rem;color:#6366f1;font-weight:700;
+                              text-transform:uppercase;letter-spacing:.5px;}
+        .agent-card .ac-agent{font-size:.78rem;color:#64748b;margin-top:2px;}
+        .agent-card .ac-body{font-size:.84rem;color:#cbd5e1;margin-top:8px;
+                             line-height:1.55;white-space:pre-wrap;}
+        </style>""", unsafe_allow_html=True)
+
+        if _run_crew_btn and ai_track_id.strip():
+            with st.status("🤖 AI agents working …", expanded=True) as _ds:
+                st.write("🧠 Planner → carrier selection …")
+                st.write("📦 Booker → AWB generation …")
+                st.write("🛰️ Tracker → calling eShipz V2 API …")
+                try:
+                    _crew_result = run_crew(tracking_id=ai_track_id.strip())
+                    st.session_state["crew_report"] = _crew_result
+                    _ds.update(label="✅ Analysis complete", state="complete", expanded=False)
+                except Exception as _ce:
+                    _ds.update(label="❌ Error", state="error")
+                    st.error(f"CrewAI Error: {_ce}")
+
+        if "crew_report" in st.session_state:
+            _r = st.session_state["crew_report"]
+
+            # Token metrics
+            try:
+                _tu = _r.token_usage
+                _c1, _c2, _c3, _c4 = st.columns(4)
+                _c1.metric("🔢 Total Tokens",      f"{_tu.total_tokens:,}")
+                _c2.metric("📤 Prompt Tokens",     f"{_tu.prompt_tokens:,}")
+                _c3.metric("📥 Completion Tokens", f"{_tu.completion_tokens:,}")
+                _c4.metric("🔄 API Calls",         _tu.successful_requests)
+            except Exception:
+                pass
+
+            # Agent decision cards (planner + booker only)
+            _card_meta = {
+                "carrier_selection_task": "🧠 Planner — Carrier Recommendation",
+                "booking_task":           "📦 Booker — AWB & Barcode",
+            }
+            for _to in (_r.tasks_output or []):
+                if _to.name not in _card_meta:
+                    continue
+                _body = (_to.raw or "").strip()
+                if len(_body) > 420:
+                    _body = _body[:420] + " …"
+                st.markdown(
+                    f'<div class="agent-card">'
+                    f'<div class="ac-label">{_card_meta[_to.name]}</div>'
+                    f'<div class="ac-agent">Agent: {(_to.agent or "").strip()}</div>'
+                    f'<div class="ac-body">{_body}</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Full checkpoint table
+            st.markdown("---")
+            st.subheader("📍 Live Checkpoint Intelligence")
+            render_tracking_output(_r)
+
+            if st.button("🗑️ Clear Report", key="dash_clear_crew"):
+                del st.session_state["crew_report"]
+                st.rerun()
+
+        st.markdown("---")
+        # --- EXISTING ROUTER SECTION ---
+        st.markdown("#### 💬 General Queries")
         query = st.text_input(
             "Your question",
             placeholder="e.g. 'Where is TKT123456?' or 'Will it be delayed?'",
@@ -159,14 +245,6 @@ def render_user_dashboard(db=None, user_id: int = 0, user_name: str = "User"):
             with st.container(border=True):
                 st.markdown(f"**🕹️ Routed to:** `{result['agent']}`")
                 st.markdown(result["response"])
-
-        with st.expander("💡 Example queries"):
-            st.markdown("""
-- `Where is my shipment TKT123456?`
-- `Will TKT123456 arrive on time?`
-- `Show me the delay risk for TKT123456`
-- `Show BlueDart performance`
-            """)
 
 
 # ── Internal: full tracking result render ─────────────────────────────────────
@@ -305,4 +383,25 @@ def _render_tracking_result(tracking_id: str, db):
                 status        = info.get("status", ""),
                 show_download = True,
                 compact       = False,
+                key_suffix    = "track",
             )
+def handle_tracking_request(tracking_id):
+    # Initialize your crew
+    orchestrator = eShipzOrchestrator().crew()
+    
+    # Kickoff with the tracking ID as an input variable
+    # This matches the {tracking_id} in your tasks.yaml
+    result = orchestrator.kickoff(inputs={'tracking_id': tracking_id})
+    
+    return result
+def run_eshipz_tracking(id_to_track):
+    # 1. Initialize the Crew class
+    # 2. Call .crew() to get the actual Crew object
+    # 3. Pass the 'tracking_id' variable into inputs
+    
+    inputs = {
+        'tracking_id': id_to_track # This will be "90001605035"
+    }
+    
+    result = eShipzOrchestrator().crew().kickoff(inputs=inputs)
+    return result

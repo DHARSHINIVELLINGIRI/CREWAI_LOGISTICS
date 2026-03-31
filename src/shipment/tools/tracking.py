@@ -17,14 +17,25 @@ import sys
 import random
 import datetime
 import httpx
+from pathlib import Path
 from crewai.tools import tool
 from dotenv import load_dotenv
 
-load_dotenv()
+# ── Absolute-path .env loader (works regardless of CWD) ─────────────────────
+_THIS = Path(__file__).resolve()
+for _candidate in [
+    _THIS.parent / ".env",
+    _THIS.parent.parent / ".env",
+    _THIS.parent.parent.parent / ".env",
+    _THIS.parent.parent.parent.parent / ".env",   # project root ← most likely
+]:
+    if _candidate.exists():
+        load_dotenv(dotenv_path=_candidate, override=True)
+        break
 
 # ── Ensure project root is importable ────────────────────────────────────────
 def _root():
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return str(_THIS.parent.parent.parent.parent)
 
 def _ensure_root():
     r = _root()
@@ -32,7 +43,8 @@ def _ensure_root():
         sys.path.insert(0, r)
 
 ESHIPZ_API_URL = "https://app.eshipz.com/api/v2/trackings"
-ESHIPZ_TOKEN   = os.getenv("ESHIPZ_API_TOKEN", "5ad42f15940faf0510b62515")
+# Read both possible env var names — .env uses ESHIPZ_API_KEY
+ESHIPZ_TOKEN = (os.getenv("ESHIPZ_API_TOKEN") or os.getenv("ESHIPZ_API_KEY") or "").strip()
 
 # ── Carrier SLA data ──────────────────────────────────────────────────────────
 CARRIER_SLA = {

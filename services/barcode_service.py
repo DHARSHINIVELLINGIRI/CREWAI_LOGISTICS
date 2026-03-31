@@ -84,6 +84,7 @@ def render_barcode_section(
     priority: str = "",
     show_download: bool = True,
     compact: bool = False,
+    key_suffix: str = "",
 ):
     """
     Render a clean Code128 barcode + download button inside any Streamlit container.
@@ -130,11 +131,12 @@ def render_barcode_section(
     )
 
     if show_download:
+        btn_key = f"dl_barcode_{tracking_id}_{key_suffix}" if key_suffix else f"dl_barcode_{tracking_id}"
         st_container.download_button(
             label="⬇️ Download Barcode",
             data=png_bytes,
             file_name=f"barcode_{tracking_id}.png",
             mime="image/png",
             use_container_width=True,
-            key=f"dl_barcode_{tracking_id}",
+            key=btn_key,
         )
