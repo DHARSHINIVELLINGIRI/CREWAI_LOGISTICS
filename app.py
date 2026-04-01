@@ -965,313 +965,228 @@ elif page == "Shipment Intelligence":
             return f'<span class="status-pill pill-delayed">🟡 {status}</span>'
         return f'<span class="status-pill pill-ontime">🟢 {status}</span>'
 
+    def _status_emoji(s):
+        s_lower = (s or "").lower()
+        if "high risk" in s_lower:
+            return "🔴 High Risk"
+        if "stuck" in s_lower:
+            return "🧊 Stuck"
+        if "delayed" in s_lower:
+            return "⏱ Delayed"
+        if "unavailable" in s_lower:
+            return "⚫ Data Unavailable"
+        return "🟢 On-Time"
+
     # ── Mode tabs ─────────────────────────────────────────────────────────────
     intel_tab1, intel_tab2 = st.tabs([
-        "📊 Date Range Scan (Agent 4 → 5)",
-        "🔍 Single Tracking Analysis (Agent 5)",
+        "📅 Date Range Scan",
+        "🔍 Single Tracking Analysis",
     ])
 
     # ══════════════════════════════════════════════════════════════════════════
-    # TAB 1: Date Range Scan — Direct API + Enrichment (No LLM Agent)
+    # TAB 1: Date Range Scan
+    # SQLite → booking list only (AWB + route + date, NO status)
+    # eShipz API → live status + analysis per AWB
     # ══════════════════════════════════════════════════════════════════════════
     with intel_tab1:
-        st.markdown("#### 📅 Bulk Shipment Monitor")
-        st.info("🚨 **Architecture Enforced:** Fetches shipment list from local **SQLite** database, retrieves real-time status via **eShipz Tracking API**, then runs Python-based analysis. **ZERO MongoDB DEPENDENCY.**")
+        st.markdown("#### 📅 Date Range Shipment Monitor")
+        st.info(
+            "Select a date range to view shipments booked in your system. "
+            "Live tracking status is fetched from the **eShipz API** for each AWB. "
+            "Shipments not yet registered with eShipz will show as **Pending**."
+        )
 
-        # ── Date picker row ───────────────────────────────────────────────────
         with st.container(border=True):
-            col_d1, col_d2, col_btn = st.columns([2, 2, 1])
+            col_d1, col_d2, col_dbtn = st.columns([2, 2, 1])
             with col_d1:
-                scan_min = st.date_input(
+                dr_min = st.date_input(
                     "From Date",
-                    value=_dt.date.today() - _dt.timedelta(days=7),
-                    key="intel_min_date",
+                    value=_dt.date.today() - _dt.timedelta(days=30),
+                    key="dr_min_date",
                 )
             with col_d2:
-                scan_max = st.date_input(
+                dr_max = st.date_input(
                     "To Date",
                     value=_dt.date.today(),
-                    key="intel_max_date",
+                    key="dr_max_date",
                 )
-            with col_btn:
+            with col_dbtn:
                 st.markdown("<br>", unsafe_allow_html=True)
-                scan_btn = st.button("🛡️ Scan & Analyze", use_container_width=True, key="intel_scan_btn")
+                dr_scan_btn = st.button("🔍 Scan", use_container_width=True, key="dr_scan_btn")
 
-        # ── Pipeline execution ────────────────────────────────────────────────
-        if scan_btn:
-            min_str = scan_min.strftime("%Y-%m-%d")
-            max_str = scan_max.strftime("%Y-%m-%d")
+        if dr_scan_btn:
+            min_str = dr_min.strftime("%Y-%m-%d")
+            max_str = dr_max.strftime("%Y-%m-%d")
 
-            with st.status(f"🛡️ Intelligence pipeline: {min_str} → {max_str} …", expanded=True) as _intel_status:
+            with st.status(f"📅 Scanning {min_str} → {max_str} …", expanded=True) as _dr_status:
                 try:
-                    from shipment.tools.tool_serve import fetch_shipments_direct, enrich_and_categorize_shipments
+                    from shipment.tools.tool_serve import (
+                        fetch_shipments_by_date_direct, _run_analysis_pure
+                    )
 
-                    # Step 1: Fetch from SQLite
-                    st.write("📂 **Step 1:** Fetching shipment list from local SQLite database (user_shipments)…")
-                    raw_shipments = fetch_shipments_direct(min_str, max_str, limit=50)
-                    st.write(f"✅ Retrieved **{len(raw_shipments)}** shipment ID(s) from SQLite.")
+                    # Step 1: fetch shipment list directly from eShipz API
+                    st.write("🛰️ **Step 1:** Calling eShipz `get-shipments` API…")
+                    api_result = fetch_shipments_by_date_direct(min_str, max_str, limit=100)
 
-                    # Step 2: Enrichment — fetch tracking per AWB + delay/stuck/risk analysis
-                    if raw_shipments:
-                        st.write(f"🔍 **Step 2:** Enrichment Engine — calling eShipz Tracking API for {min(len(raw_shipments), 20)} shipment(s)…")
-                        st.write("⏱ Detecting delayed / 🧊 stuck / 🔴 high-risk shipments directly from API JSON…")
-                        enriched = enrich_and_categorize_shipments(raw_shipments, max_enrich=20)
-                    else:
-                        enriched = {
-                            "exception_shipments": [], "return_shipments": [],
-                            "delayed_shipments": [], "stuck_shipments": [],
-                            "high_risk_shipments": [], "all_analyses": [],
-                            "summary": {"total_scanned": 0, "exceptions": 0, "returns": 0, "delayed": 0, "stuck": 0, "high_risk": 0},
-                        }
+                    if api_result["error"]:
+                        raise ValueError(api_result["error"])
 
-                    # Store in session state so filter dropdown works without re-running
-                    st.session_state["_intel_enriched"] = enriched
-                    st.session_state["_intel_date_range"] = f"{min_str} → {max_str}"
-                    _intel_status.update(label="✅ Intelligence Pipeline Complete", state="complete")
+                    ships = api_result["shipments"]
+                    st.write(f"✅ eShipz returned **{len(ships)}** shipment(s).")
 
-                except Exception as _ex:
-                    _intel_status.update(label="❌ Pipeline Error", state="error")
-                    st.error(f"Intelligence pipeline error: {_ex}")
-                    st.session_state.pop("_intel_enriched", None)
+                    # Step 2: run analysis on each shipment
+                    st.write("🔍 **Step 2:** Running delay / stuck / risk analysis…")
+                    _dr_results = []
+                    for ship in ships:
+                        # v1 field names
+                        awb_val = (ship.get("awb") or ship.get("awb_number") or "—").strip()
 
-        # ── Render results (from session state) ──────────────────────────────
-        enriched = st.session_state.get("_intel_enriched")
-        if enriched is not None:
-            summ = enriched["summary"]
-            all_analyses = enriched["all_analyses"]
-            exception_ships = enriched["exception_shipments"]
-            return_ships = enriched["return_shipments"]
-            delayed_ships = enriched["delayed_shipments"]
-            stuck_ships = enriched["stuck_shipments"]
-            high_risk_ships = enriched.get("high_risk_shipments", [])
-            date_range_str = st.session_state.get("_intel_date_range", "")
+                        # origin / destination from order_details nested structure
+                        order_details = ship.get("order_details") or {}
+                        sender   = order_details.get("sender_address") or {}
+                        receiver = order_details.get("receiver_address") or {}
+                        origin      = sender.get("city") or sender.get("state") or "—"
+                        destination = receiver.get("city") or receiver.get("state") or "—"
 
-            high_risk_count = summ.get("high_risk", len(high_risk_ships))
+                        carrier = (
+                            ship.get("vendor_display_name") or ship.get("slug") or
+                            ship.get("carrier_name") or "—"
+                        )
+                        order_id    = ship.get("order_id") or awb_val
+                        created_raw = ship.get("creation_date") or ""
+                        created_str = str(created_raw)[:16] if created_raw else "—"
 
-            # ══════════════════════════════════════════════════════════════════
-            # SECTION 1: Summary Metrics (st.metric row)
-            # ══════════════════════════════════════════════════════════════════
-            st.markdown("---")
-            st.markdown(f"##### 📊 Intelligence Summary — {date_range_str}")
+                        # fetch live checkpoints via tracking API
+                        from shipment.tools.tool_serve import _fetch_tracking_direct
+                        td = _fetch_tracking_direct(awb_val) if awb_val != "—" else None
+                        if td:
+                            obj = td[0] if isinstance(td, list) and td else td
+                            # merge tracking data into ship for analysis
+                            ship = {**ship, **obj}
 
-            m1, m2, m3, m4, m5, m6 = st.columns(6)
-            with m1:
-                st.metric("📦 Total", summ.get("total_scanned", 0))
-            with m2:
-                st.metric("🚨 Exceptions", summ.get("exceptions", 0))
-            with m3:
-                st.metric("🔁 Returns", summ.get("returns", 0))
-            with m4:
-                st.metric("⏱ Delayed", summ.get("delayed", 0))
-            with m5:
-                st.metric("🧊 Stuck", summ.get("stuck", 0))
-            with m6:
-                st.metric("🔴 High Risk", high_risk_count)
+                        analysis = _run_analysis_pure(ship)
 
-            # ══════════════════════════════════════════════════════════════════
-            # SECTION 2: Status Filter
-            # ══════════════════════════════════════════════════════════════════
-            st.markdown("---")
-            filter_col, spacer_col = st.columns([2, 4])
-            with filter_col:
-                status_filter = st.selectbox(
+                        _dr_results.append({
+                            "awb":         awb_val,
+                            "order_id":    order_id,
+                            "carrier":     carrier,
+                            "origin":      origin,
+                            "destination": destination,
+                            "created":     created_str,
+                            "live_status": analysis["status"],
+                            "current_tag": analysis["current_tag"],
+                            "checkpoints": analysis["total_checkpoints"],
+                            "last_update": analysis["last_movement_time"] or "—",
+                            "delay_days":  analysis["delay_days"],
+                            "failed_att":  analysis["failed_attempts"],
+                            "issues":      analysis["issues"],
+                            "prediction":  analysis["prediction"],
+                            "explanation": analysis["explanation"],
+                            "repeated_hubs": analysis["repeated_hubs"],
+                            "is_delayed":  analysis["is_delayed"],
+                            "is_stuck":    analysis["is_stuck"],
+                            "is_high_risk":analysis["is_high_risk"],
+                        })
+
+                    st.session_state["_dr_results"] = _dr_results
+                    st.session_state["_dr_label"]   = f"{min_str} → {max_str}"
+                    _dr_status.update(label="✅ Scan Complete", state="complete")
+
+                except Exception as _dr_ex:
+                    _dr_status.update(label="❌ Error", state="error")
+                    st.error(f"Scan error: {_dr_ex}")
+                    st.session_state.pop("_dr_results", None)
+
+        # ── Render results ────────────────────────────────────────────────────
+        _dr_res   = st.session_state.get("_dr_results")
+        _dr_label = st.session_state.get("_dr_label", "")
+
+        if "_dr_results" in st.session_state:
+            if not _dr_res:
+                st.info(f"No shipments found for {_dr_label}.")
+            else:
+                _delayed_c  = sum(1 for r in _dr_res if r["live_status"] == "Delayed")
+                _stuck_c    = sum(1 for r in _dr_res if r["live_status"] == "Stuck")
+                _risk_c     = sum(1 for r in _dr_res if r["live_status"] == "High Risk")
+                _ontime_c   = sum(1 for r in _dr_res if r["live_status"] == "On-Time")
+
+                st.markdown("---")
+                st.markdown(f"##### 📊 Results — {_dr_label}")
+                sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+                sc1.metric("📦 Total",      len(_dr_res))
+                sc2.metric("� On-Time",    _ontime_c)
+                sc3.metric("⏱ Delayed",    _delayed_c)
+                sc4.metric("🧊 Stuck",      _stuck_c)
+                sc5.metric("🔴 High Risk",  _risk_c)
+
+                st.markdown("---")
+                _dr_filter = st.selectbox(
                     "Filter by Status",
                     ["All", "On-Time", "Delayed", "Stuck", "High Risk"],
-                    key="intel_status_filter",
+                    key="dr_status_filter",
                 )
+                _dr_filtered = _dr_res if _dr_filter == "All" else [
+                    r for r in _dr_res if r["live_status"] == _dr_filter
+                ]
 
-            # Apply filter
-            if status_filter == "All":
-                filtered_analyses = all_analyses
-            else:
-                filtered_analyses = [a for a in all_analyses if a.get("status") == status_filter]
+                st.markdown(f"#### 📋 Shipments ({len(_dr_filtered)} shown)")
+                if _dr_filtered:
+                    _tbl = []
+                    for r in _dr_filtered:
+                        _tbl.append({
+                            "AWB":         r["awb"],
+                            "Order ID":    r["order_id"],
+                            "Carrier":     r["carrier"],
+                            "Origin":      r["origin"],
+                            "Destination": r["destination"],
+                            "Created":     r["created"],
+                            "Status":      _status_emoji(r["live_status"]),
+                            "Checkpoints": r["checkpoints"],
+                            "Last Update": r["last_update"],
+                            "Issues":      "; ".join(r["issues"]) if r["issues"] else "—",
+                        })
+                    st.dataframe(
+                        pd.DataFrame(_tbl),
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Issues": st.column_config.TextColumn("Issues", width="large"),
+                        },
+                    )
+                else:
+                    st.info(f"No shipments match filter: **{_dr_filter}**")
 
-            # ══════════════════════════════════════════════════════════════════
-            # SECTION 3: All Shipments Table
-            # ══════════════════════════════════════════════════════════════════
-            st.markdown(f"#### 📋 All Shipments ({len(filtered_analyses)} shown)")
-
-            def _status_emoji(s):
-                s_lower = (s or "").lower()
-                if "high risk" in s_lower:
-                    return "🔴 High Risk"
-                if "stuck" in s_lower:
-                    return "🧊 Stuck"
-                if "delayed" in s_lower:
-                    return "⏱ Delayed"
-                return "🟢 On-Time"
-
-            if filtered_analyses:
-                table_rows = []
-                for a in filtered_analyses:
-                    table_rows.append({
-                        "Order ID": a.get("order_id", "—"),
-                        "AWB / Tracking #": a.get("awb", a.get("tracking_number", "—")),
-                        "Status": _status_emoji(a.get("status", "On-Time")),
-                        "Delay (days)": a.get("delay_days", 0),
-                        "Checkpoints": a.get("total_checkpoints", 0),
-                        "Last Movement": a.get("last_movement_time") or "—",
-                        "Issues": "; ".join(a.get("issues", [])) if a.get("issues") else "—",
-                    })
-
-                df = pd.DataFrame(table_rows)
-                st.dataframe(
-                    df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Order ID": st.column_config.TextColumn("Order ID", width="medium"),
-                        "Status": st.column_config.TextColumn("Status", width="medium"),
-                        "Issues": st.column_config.TextColumn("Issues", width="large"),
-                    },
-                )
-            else:
-                st.info(f"No shipments match the filter: **{status_filter}**")
-
-            # ══════════════════════════════════════════════════════════════════
-            # SECTION 4: Expandable Detailed Analysis per Shipment
-            # ══════════════════════════════════════════════════════════════════
-            st.markdown("---")
-            st.markdown("#### 🔍 Detailed Shipment Analysis")
-            st.caption("Click any shipment to expand its full intelligence report — includes issues, prediction, and explanation.")
-
-            for a in filtered_analyses:
-                oid = a.get("order_id", "Unknown")
-                awb = a.get("awb", oid)
-                a_status = a.get("status", "On-Time")
-                a_issues = a.get("issues", [])
-                d_days = a.get("delay_days", 0)
-                f_att = a.get("failed_attempts", 0)
-                t_cp = a.get("total_checkpoints", 0)
-                lmt = a.get("last_movement_time") or "—"
-                r_hubs = a.get("repeated_hubs", [])
-                trk = a.get("tracking_number", "—")
-                a_prediction = a.get("prediction", "—")
-                a_explanation = a.get("explanation", "—")
-
-                with st.expander(f"{_status_emoji(a_status)} | {oid} | AWB: {awb}", expanded=False):
-                    st.markdown(f"**Status:** {a_status}")
-                    flags = []
-                    if a.get("is_delayed"):
-                        flags.append('<span class="status-pill pill-delayed">⏱ Delayed</span>')
-                    if a.get("is_stuck"):
-                        flags.append('<span class="status-pill pill-stuck">🧊 Stuck</span>')
-                    if a.get("is_high_risk"):
-                        flags.append('<span class="status-pill pill-highrisk">🔴 High Risk</span>')
-                    if not flags:
-                        flags.append('<span class="status-pill pill-ontime">🟢 On-Time</span>')
-                    st.markdown(" ".join(flags), unsafe_allow_html=True)
-
-                    # Metrics row inside expander
-                    ec1, ec2, ec3, ec4 = st.columns(4)
-                    with ec1:
-                        st.metric("Delay", f"{d_days}d")
-                    with ec2:
-                        st.metric("Failed Attempts", f_att)
-                    with ec3:
-                        st.metric("Checkpoints", t_cp)
-                    with ec4:
-                        st.metric("Last Movement", lmt)
-
-                    # Repeated hubs
-                    if r_hubs:
-                        st.warning(f"🔁 Repeated hubs detected: **{', '.join(r_hubs)}**")
-
-                    # Issues list
-                    if a_issues:
-                        st.markdown("**Issues Detected:**")
-                        for iss in a_issues:
-                            st.markdown(f"- {iss}")
-
-                    # Prediction + Explanation (deterministic, no LLM)
-                    st.markdown(f"""
-                    <div class="prediction-box">
-                      <strong>🔮 Prediction:</strong> {a_prediction}<br>
-                      <strong>💡 Explanation:</strong> {a_explanation}
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    # Current tag
-                    ctag = a.get("current_tag", "")
-                    if ctag:
-                        st.caption(f"Current carrier status tag: `{ctag}`")
-
-            # ══════════════════════════════════════════════════════════════════
-            # SECTION 5: Category Breakdown Tables
-            # ══════════════════════════════════════════════════════════════════
-            has_categories = exception_ships or return_ships or delayed_ships or stuck_ships or high_risk_ships
-            if has_categories:
                 st.markdown("---")
-                st.markdown("#### 📂 Category Breakdown")
+                st.markdown("#### 🔍 Detailed Analysis")
+                for r in _dr_filtered:
+                    _exp_lbl = f"{_status_emoji(r['live_status'])} | {r['awb']} | {r['origin']} → {r['destination']}"
+                    with st.expander(_exp_lbl, expanded=False):
+                        _ec1, _ec2, _ec3, _ec4 = st.columns(4)
+                        _ec1.metric("Delay",           f"{r['delay_days']}d")
+                        _ec2.metric("Failed Attempts",  r["failed_att"])
+                        _ec3.metric("Checkpoints",      r["checkpoints"])
+                        _ec4.metric("Last Update",      r["last_update"])
 
-                cat_tab1, cat_tab2, cat_tab3, cat_tab4, cat_tab5 = st.tabs([
-                    f"🚨 Exceptions ({len(exception_ships)})",
-                    f"🔁 Returns ({len(return_ships)})",
-                    f"⏱ Delayed ({len(delayed_ships)})",
-                    f"🧊 Stuck ({len(stuck_ships)})",
-                    f"🔴 High Risk ({len(high_risk_ships)})",
-                ])
+                        if r["repeated_hubs"]:
+                            st.warning(f"🔁 Repeated hubs: **{', '.join(r['repeated_hubs'])}**")
 
-                def _cat_df(ships, include_analysis=False):
-                    rows = []
-                    for s in ships:
-                        row = {
-                            "Tracking #": s.get("tracking_number", s.get("awb", "—")),
-                            "Status": s.get("tag", s.get("status", "—")),
-                            "Carrier": (s.get("slug") or s.get("carrier_name") or "—").upper(),
-                            "Order ID": s.get("order_id", "—"),
-                        }
-                        if include_analysis and "_analysis" in s:
-                            aa = s["_analysis"]
-                            row["Delay (days)"] = aa.get("delay_days", 0)
-                            row["Last Movement"] = aa.get("last_movement_time") or "—"
-                            row["Issues"] = "; ".join(aa.get("issues", []))
-                        rows.append(row)
-                    return pd.DataFrame(rows) if rows else None
+                        if r["issues"]:
+                            st.markdown("**Issues:**")
+                            for iss in r["issues"]:
+                                st.markdown(f"- {iss}")
 
-                with cat_tab1:
-                    df_exc = _cat_df(exception_ships)
-                    if df_exc is not None:
-                        st.dataframe(df_exc, use_container_width=True, hide_index=True)
-                    else:
-                        st.success("No exception shipments in this range.")
+                        st.markdown(f"""
+                        <div class="prediction-box">
+                          <strong>🔮 Prediction:</strong> {r['prediction']}<br>
+                          <strong>💡 Explanation:</strong> {r['explanation']}
+                        </div>
+                        """, unsafe_allow_html=True)
 
-                with cat_tab2:
-                    df_ret = _cat_df(return_ships)
-                    if df_ret is not None:
-                        st.dataframe(df_ret, use_container_width=True, hide_index=True)
-                    else:
-                        st.success("No return/RTO shipments in this range.")
+                        if r["current_tag"]:
+                            st.caption(f"Carrier status tag: `{r['current_tag']}`")
 
-                with cat_tab3:
-                    df_del = _cat_df(delayed_ships, include_analysis=True)
-                    if df_del is not None:
-                        st.dataframe(df_del, use_container_width=True, hide_index=True)
-                    else:
-                        st.success("No delayed shipments detected.")
-
-                with cat_tab4:
-                    df_stk = _cat_df(stuck_ships, include_analysis=True)
-                    if df_stk is not None:
-                        st.dataframe(df_stk, use_container_width=True, hide_index=True)
-                    else:
-                        st.success("No stuck shipments detected.")
-
-                with cat_tab5:
-                    df_hr = _cat_df(high_risk_ships, include_analysis=True)
-                    if df_hr is not None:
-                        st.dataframe(df_hr, use_container_width=True, hide_index=True)
-                    else:
-                        st.success("No high-risk shipments detected.")
-
-            # No issues at all
-            total_flagged = summ.get("exceptions", 0) + summ.get("returns", 0) + summ.get("delayed", 0) + summ.get("stuck", 0) + high_risk_count
-            if not total_flagged:
-                st.success("✅ All shipments are progressing normally! No exceptions, delays, or stuck shipments detected.")
-
-            # Debug expanders
-            with st.expander("🛠 Debug: Per-Shipment Analysis JSON"):
-                st.json(all_analyses if all_analyses else [])
+                if not (_delayed_c + _stuck_c + _risk_c):
+                    st.success("✅ All shipments in this range are progressing normally.")
 
     # ══════════════════════════════════════════════════════════════════════════
     # TAB 2: Single Tracking ID Analysis
@@ -1279,8 +1194,8 @@ elif page == "Shipment Intelligence":
     with intel_tab2:
         st.markdown("#### 🔍 Single Shipment Deep Analysis")
         st.caption(
-            "Enter a tracking ID to fetch live data and run the Shipment Intelligence Agent "
-            "for delay, stuck, risk, and movement discrepancy detection."
+            "Enter a tracking ID to fetch live data from eShipz and run "
+            "pure-Python delay, stuck, risk, and movement discrepancy detection."
         )
 
         with st.container(border=True):
@@ -1303,129 +1218,71 @@ elif page == "Shipment Intelligence":
                 st.warning("Please enter a tracking ID.")
             else:
                 with st.status(f"🔍 Analyzing shipment **{tid}** …", expanded=True) as _a_status:
-                    st.write("🛰️ Fetching live tracking data from eShipz…")
-
+                    st.write("🛰️ Fetching live tracking data from eShipz API…")
+                    st.write("🔍 Running pure-Python intelligence analysis…")
                     try:
-                        # Step 1: Fetch tracking data (direct API call, not via Tool wrapper)
-                        import requests as _req
-                        _api_token = (os.getenv("ESHIPZ_API_TOKEN") or os.getenv("ESHIPZ_API_KEY") or "").strip()
-                        if not _api_token:
-                            raise ValueError("No eShipz API token found in environment")
-                        _resp = _req.post(
-                            "https://app.eshipz.com/api/v2/trackings",
-                            json={"track_id": tid},
-                            headers={"Content-Type": "application/json", "X-API-TOKEN": _api_token},
-                            timeout=20,
-                        )
-                        if _resp.status_code != 200:
-                            raise ValueError(f"HTTP {_resp.status_code}: {_resp.text[:200]}")
-                        _track_json = _resp.json()
-                        if not _track_json or (isinstance(_track_json, dict) and _track_json.get("Count") == 0):
-                            raw_track = None
-                            _a_status.update(label="📭 No records", state="complete")
-                            st.warning(f"📭 No records found for ID {tid}")
-                        else:
-                            raw_track = _json.dumps(_track_json)
-
-                        if raw_track:
-                            # Parse tracking data
-                            track_data = _json.loads(raw_track)
-                            if isinstance(track_data, list) and track_data:
-                                shipment_obj = track_data[0]
-                            elif isinstance(track_data, dict):
-                                # Check for nested data
-                                for k in ("data", "result", "results", "trackings", "shipments"):
-                                    if k in track_data and isinstance(track_data[k], list) and track_data[k]:
-                                        shipment_obj = track_data[k][0]
-                                        break
-                                else:
-                                    shipment_obj = track_data
-                            else:
-                                shipment_obj = track_data
-
-                            st.write("🔍 **Agent 5** — Running Shipment Intelligence analysis…")
-
-                            # Step 2: Run intelligence analysis
-                            from shipment.main import run_intelligence_analysis
-                            ship_str = _json.dumps(shipment_obj)
-                            intel_result = run_intelligence_analysis(ship_str)
-                            intel_raw = intel_result.raw if hasattr(intel_result, 'raw') else str(intel_result)
-
-                            _a_status.update(label="✅ Analysis Complete", state="complete")
-
+                        from shipment.tools.tool_serve import analyze_single_shipment
+                        a_json2 = analyze_single_shipment(tid)
+                        _a_status.update(label="✅ Analysis Complete", state="complete")
                     except Exception as _ex2:
                         _a_status.update(label="❌ Error", state="error")
                         st.error(f"Analysis error: {_ex2}")
-                        intel_raw = None
-                        shipment_obj = None
+                        a_json2 = None
 
                 # ── Render single analysis result ─────────────────────────────
-                if intel_raw:
-                    # Parse JSON from agent output
-                    a_json2 = None
-                    for _sc3 in ("{",):
-                        _idx3 = intel_raw.find(_sc3)
-                        if _idx3 != -1:
-                            try:
-                                a_json2 = _json.loads(intel_raw[_idx3:])
-                                break
-                            except _json.JSONDecodeError:
-                                pass
+                if a_json2:
+                    oid2  = a_json2.get("order_id", tid)
+                    s2    = a_json2.get("status", "On-Time")
+                    iss2  = a_json2.get("issues", [])
+                    pred2 = a_json2.get("prediction", "—")
+                    expl2 = a_json2.get("explanation", "—")
+                    d_days = a_json2.get("delay_days", 0)
+                    f_att  = a_json2.get("failed_attempts", 0)
+                    t_cp   = a_json2.get("total_checkpoints", 0)
+                    lmt2   = a_json2.get("last_movement_time") or "—"
 
-                    if a_json2 and isinstance(a_json2, dict):
-                        oid2 = a_json2.get("order_id", tid)
-                        s2 = a_json2.get("status", "Unknown")
-                        iss2 = a_json2.get("issues", [])
-                        pred2 = a_json2.get("prediction", "—")
-                        expl2 = a_json2.get("explanation", "")
-                        d_days = a_json2.get("delay_days", 0)
-                        f_att = a_json2.get("failed_attempts", 0)
-                        t_cp = a_json2.get("total_checkpoints", 0)
+                    st.markdown(f"""
+                    <div class="intel-metric-row">
+                      <div class="intel-metric">
+                        <div class="im-val">{_status_pill(s2)}</div>
+                        <div class="im-lbl">Status</div>
+                      </div>
+                      <div class="intel-metric">
+                        <div class="im-val">{d_days}</div>
+                        <div class="im-lbl">Days Delayed</div>
+                      </div>
+                      <div class="intel-metric">
+                        <div class="im-val">{f_att}</div>
+                        <div class="im-lbl">Failed Attempts</div>
+                      </div>
+                      <div class="intel-metric">
+                        <div class="im-val">{t_cp}</div>
+                        <div class="im-lbl">Checkpoints</div>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-                        # Metrics row
-                        st.markdown(f"""
-                        <div class="intel-metric-row">
-                          <div class="intel-metric">
-                            <div class="im-val">{_status_pill(s2)}</div>
-                            <div class="im-lbl">Status</div>
-                          </div>
-                          <div class="intel-metric">
-                            <div class="im-val">{d_days}</div>
-                            <div class="im-lbl">Days Delayed</div>
-                          </div>
-                          <div class="intel-metric">
-                            <div class="im-val">{f_att}</div>
-                            <div class="im-lbl">Failed Attempts</div>
-                          </div>
-                          <div class="intel-metric">
-                            <div class="im-val">{t_cp}</div>
-                            <div class="im-lbl">Checkpoints</div>
-                          </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                    issues_html2 = "".join(f"<li>{iss}</li>" for iss in iss2)
+                    st.markdown(f"""
+                    <div class="intel-card">
+                      <div class="ic-title">📦 {oid2} &nbsp; {_status_pill(s2)}</div>
+                      <div class="ic-issues"><ul>{issues_html2}</ul></div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-                        issues_html2 = "".join(f"<li>{iss}</li>" for iss in iss2)
-                        st.markdown(f"""
-                        <div class="intel-card">
-                          <div class="ic-title">
-                            📦 {oid2} &nbsp; {_status_pill(s2)}
-                          </div>
-                          <div class="ic-issues"><ul>{issues_html2}</ul></div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div class="prediction-box">
+                      <strong>🔮 Prediction:</strong> {pred2}<br>
+                      <strong>💡 Explanation:</strong> {expl2}
+                    </div>
+                    """, unsafe_allow_html=True)
 
-                        st.markdown(f"""
-                        <div class="prediction-box">
-                          <strong>🔮 Prediction:</strong> {pred2}<br>
-                          <strong>💡 Explanation:</strong> {expl2}
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.markdown("#### 📄 Agent Analysis Output")
-                        st.markdown(intel_raw)
+                    r_hubs2 = a_json2.get("repeated_hubs", [])
+                    if r_hubs2:
+                        st.warning(f"🔁 Repeated hubs: **{', '.join(r_hubs2)}**")
 
                     with st.expander("🛠 Raw Analysis (debug)"):
-                        st.text(intel_raw)
+                        st.json(a_json2)
 
 
 # ═════════════════════════════════════════════════════════════════════════════

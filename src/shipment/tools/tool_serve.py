@@ -452,9 +452,11 @@ def _run_analysis_pure(shipment: dict) -> dict:
     """
     now = datetime.datetime.now()
 
+    # Prefer the most specific status field; fall back through alternatives
     current_tag = (
         shipment.get("tag") or shipment.get("status")
-        or shipment.get("current_status") or ""
+        or shipment.get("current_status") or shipment.get("tracking_status")
+        or shipment.get("order_status") or ""
     ).lower()
     checkpoints_raw = (
         shipment.get("checkpoints")
@@ -584,6 +586,11 @@ def _run_analysis_pure(shipment: dict) -> dict:
         is_high_risk = True
         issues.append("Return/RTO process initiated")
 
+    # Cancelled shipments
+    if "cancel" in current_tag:
+        is_high_risk = True
+        issues.append("Shipment has been cancelled")
+
     # ── Status label ─────────────────────────────────────────────────────────
     if is_high_risk:
         status_label = "High Risk"
@@ -595,7 +602,19 @@ def _run_analysis_pure(shipment: dict) -> dict:
         status_label = "On-Time"
 
     if not issues:
-        issues.append("No anomalies detected")
+        # Map known eShipz status tags to human-readable messages
+        _tag_messages = {
+            "inforeceived":    "Shipment information received — awaiting pickup.",
+            "pickup_schedule": "Pickup scheduled — awaiting carrier collection.",
+            "pickedup":        "Shipment picked up by carrier.",
+            "intransit":       "Shipment is in transit.",
+            "outfordelivery":  "Out for delivery.",
+            "delivered":       "Shipment delivered successfully.",
+            "attemptfail":     "Delivery attempt failed.",
+        }
+        _clean = current_tag.replace(" ", "").replace("_", "").lower()
+        _msg = next((v for k, v in _tag_messages.items() if k in _clean), None)
+        issues.append(_msg or "No anomalies detected — shipment is progressing normally.")
 
     # ── Deterministic Prediction (rule-based, NO LLM) ────────────────────
     if is_high_risk:
@@ -614,10 +633,12 @@ def _run_analysis_pure(shipment: dict) -> dict:
 
     if status_label == "On-Time":
         explanation_parts.append(
-            f"Shipment is progressing normally with {len(checkpoints)} checkpoint(s) recorded."
+            f"Shipment is progressing normally. "
+            f"Current carrier status: {current_tag.replace('_',' ').title()}. "
+            f"{len(checkpoints)} checkpoint(s) recorded."
         )
         if last_movement_time:
-            explanation_parts.append(f"Last movement detected at {last_movement_time}.")
+            explanation_parts.append(f"Last movement: {last_movement_time}.")
     else:
         if is_delayed and delay_days > 0:
             explanation_parts.append(
@@ -670,21 +691,189 @@ def _run_analysis_pure(shipment: dict) -> dict:
     }
 
 
+def bulk_scan_awb_list(awb_list: list) -> dict:
+    """
+    Real-time bulk scan pipeline.
+    Input  : plain list of AWB / tracking ID strings.
+    Flow   : for each AWB → eShipz Tracking API → _run_analysis_pure → categorize.
+    Output : same shape as enrich_and_categorize_shipments.
+
+    ❌ No SQLite.  ❌ No MongoDB.  ✅ Only live eShipz API data.
+    """
+    exception_ships, return_ships = [], []
+    delayed_ships, stuck_ships, high_risk_ships = [], [], []
+    all_analyses = []
+
+    for raw_awb in awb_list:
+        track_id = str(raw_awb).strip()
+        if not track_id:
+            continue
+
+        tracking_data = _fetch_tracking_direct(track_id)
+
+        if not tracking_data:
+            # API returned nothing — mark as unavailable
+            analysis = {
+                "order_id": track_id, "awb": track_id,
+                "status": "Data Unavailable",
+                "is_delayed": False, "is_stuck": False, "is_high_risk": False,
+                "delay_days": 0, "failed_attempts": 0, "total_checkpoints": 0,
+                "last_movement_time": None, "repeated_hubs": [],
+                "issues": ["No data returned from eShipz API — AWB may not be registered."],
+                "current_tag": "",
+                "prediction": "Unable to determine.",
+                "explanation": "eShipz API returned no tracking data for this AWB.",
+                "tracking_number": track_id,
+            }
+            all_analyses.append(analysis)
+            continue
+
+        # Normalise to single shipment dict
+        shipment_obj = {}
+        if isinstance(tracking_data, list) and tracking_data:
+            shipment_obj = tracking_data[0]
+        elif isinstance(tracking_data, dict):
+            for k in ("data", "result", "results", "trackings", "shipments"):
+                if k in tracking_data and isinstance(tracking_data[k], list) and tracking_data[k]:
+                    shipment_obj = tracking_data[k][0]
+                    break
+            else:
+                shipment_obj = tracking_data
+
+        analysis = _run_analysis_pure(shipment_obj)
+        analysis["tracking_number"] = track_id
+        all_analyses.append(analysis)
+
+        live_tag = analysis.get("current_tag", "").lower()
+        is_exception = any(kw in live_tag for kw in (
+            "exception", "undelivered", "failed", "delivery failed", "undeliverable"))
+        is_return = any(kw in live_tag for kw in ("rto", "return", "returned"))
+
+        if is_exception:
+            exception_ships.append(analysis)
+        if is_return:
+            return_ships.append(analysis)
+        if analysis["is_delayed"] and not is_exception and not is_return:
+            delayed_ships.append(analysis)
+        if analysis["is_stuck"] and not is_exception and not is_return:
+            stuck_ships.append(analysis)
+        if analysis["is_high_risk"]:
+            high_risk_ships.append(analysis)
+
+    return {
+        "exception_shipments": exception_ships,
+        "return_shipments": return_ships,
+        "delayed_shipments": delayed_ships,
+        "stuck_shipments": stuck_ships,
+        "high_risk_shipments": high_risk_ships,
+        "all_analyses": all_analyses,
+        "summary": {
+            "total_scanned": len(all_analyses),
+            "exceptions": len(exception_ships),
+            "returns": len(return_ships),
+            "delayed": len(delayed_ships),
+            "stuck": len(stuck_ships),
+            "high_risk": len(high_risk_ships),
+        },
+    }
+
+
+def fetch_shipments_by_date_direct(min_date: str, max_date: str, page: int = 1, limit: int = 50) -> dict:
+    """
+    Calls eShipz GET /api/v1/get-shipments for a date range.
+    Returns {"shipments": [...], "total": int, "error": str|None}
+    Zero DB dependency — pure eShipz API.
+    """
+    api_token = (os.getenv("ESHIPZ_API_TOKEN") or os.getenv("ESHIPZ_API_KEY") or "").strip()
+    if not api_token:
+        return {"shipments": [], "total": 0, "error": "No eShipz API token found in environment."}
+
+    try:
+        resp = requests.get(
+            "https://app.eshipz.com/api/v1/get-shipments",
+            headers={"Content-Type": "application/json", "X-API-TOKEN": api_token},
+            params={"min_date": min_date, "max_date": max_date, "page": page, "limit": limit},
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return {"shipments": [], "total": 0,
+                    "error": f"HTTP {resp.status_code}: {resp.text[:300]}"}
+
+        data = resp.json()
+        # v1 returns a plain list
+        if isinstance(data, list):
+            ships = data
+        elif isinstance(data, dict):
+            ships = (
+                data.get("shipments") or data.get("data") or
+                data.get("results") or data.get("result") or []
+            )
+            if not isinstance(ships, list):
+                ships = [data] if data else []
+        else:
+            ships = []
+
+        return {"shipments": ships, "total": len(ships), "error": None}
+
+    except requests.exceptions.Timeout:
+        return {"shipments": [], "total": 0, "error": "Request timed out after 30 seconds."}
+    except Exception as e:
+        return {"shipments": [], "total": 0, "error": str(e)}
+
+
+def analyze_single_shipment(track_id: str) -> dict:
+    """
+    Fetch live tracking data from eShipz for a single AWB and run pure-Python analysis.
+    Returns the same dict shape as _run_analysis_pure.
+    On API failure, returns a minimal dict with status='On-Time' and an explanation.
+    """
+    tracking_data = _fetch_tracking_direct(track_id)
+    if not tracking_data:
+        return {
+            "order_id": track_id,
+            "awb": track_id,
+            "status": "On-Time",
+            "is_delayed": False,
+            "is_stuck": False,
+            "is_high_risk": False,
+            "delay_days": 0,
+            "failed_attempts": 0,
+            "total_checkpoints": 0,
+            "last_movement_time": None,
+            "repeated_hubs": [],
+            "issues": ["No tracking data returned from eShipz API — shipment may not be registered yet."],
+            "current_tag": "",
+            "prediction": "Unable to determine — no API data available.",
+            "explanation": "The eShipz API returned no data for this tracking ID. Verify the AWB is correct and the shipment has been registered.",
+        }
+
+    # Normalise API response to a single shipment dict
+    shipment_obj = {}
+    if isinstance(tracking_data, list) and tracking_data:
+        shipment_obj = tracking_data[0]
+    elif isinstance(tracking_data, dict):
+        for k in ("data", "result", "results", "trackings", "shipments"):
+            if k in tracking_data and isinstance(tracking_data[k], list) and tracking_data[k]:
+                shipment_obj = tracking_data[k][0]
+                break
+        else:
+            shipment_obj = tracking_data
+
+    result = _run_analysis_pure(shipment_obj)
+    result["tracking_number"] = track_id
+    return result
+
+
 def enrich_and_categorize_shipments(shipments: list, max_enrich: int = 20) -> dict:
     """
-    Takes a list of shipment dicts from the bulk API.
-    For each, fetches tracking data via the eShipz tracking API,
-    runs delayed/stuck/risk analysis, and categorizes.
+    Bulk pipeline:
+      Step 1 — SQLite provides the shipment list (AWBs + metadata).
+      Step 2 — For each AWB call eShipz Tracking API (POST /trackings).
+      Step 3 — Run pure-Python analysis (delay / stuck / risk).
+      Step 4 — Categorize and return results.
 
-    Returns:
-    {
-        "exception_shipments": [...],
-        "return_shipments": [...],
-        "delayed_shipments": [...],
-        "stuck_shipments": [...],
-        "all_analyses": [...],       # per-shipment analysis result
-        "summary": { counts }
-    }
+    ❌ MongoDB is NEVER used here.
+    ❌ Stored status from SQLite is NEVER used for analysis.
     """
     exception_ships = []
     return_ships = []
@@ -693,8 +882,7 @@ def enrich_and_categorize_shipments(shipments: list, max_enrich: int = 20) -> di
     high_risk_ships = []
     all_analyses = []
 
-    for i, ship in enumerate(shipments[:max_enrich]):
-        # Get tracking number / AWB
+    for ship in shipments[:max_enrich]:
         track_id = (
             ship.get("tracking_number")
             or ship.get("awb")
@@ -703,34 +891,14 @@ def enrich_and_categorize_shipments(shipments: list, max_enrich: int = 20) -> di
             or ""
         ).strip()
 
-        current_tag = (
-            ship.get("tag") or ship.get("status")
-            or ship.get("current_status") or ""
-        ).lower()
-
-        # Categorize by status text (exception / return)
-        is_exception = any(kw in current_tag for kw in (
-            "exception", "undelivered", "failed", "delivery failed", "undeliverable",
-        ))
-        is_return = any(kw in current_tag for kw in (
-            "rto", "return", "returned",
-        ))
-
-        if is_exception:
-            exception_ships.append(ship)
-        if is_return:
-            return_ships.append(ship)
-
-        # Fetch tracking data for deeper analysis
-        enriched_ship = dict(ship)  # copy
+        # Fetch LIVE data from eShipz API
+        enriched_ship = dict(ship)
         if track_id:
             tracking_data = _fetch_tracking_direct(track_id)
             if tracking_data:
-                # Merge tracking data into shipment
                 if isinstance(tracking_data, list) and tracking_data:
                     enriched_ship.update(tracking_data[0])
                 elif isinstance(tracking_data, dict):
-                    # Check nested
                     for k in ("data", "result", "results", "trackings", "shipments"):
                         if k in tracking_data and isinstance(tracking_data[k], list) and tracking_data[k]:
                             enriched_ship.update(tracking_data[k][0])
@@ -738,18 +906,28 @@ def enrich_and_categorize_shipments(shipments: list, max_enrich: int = 20) -> di
                     else:
                         enriched_ship.update(tracking_data)
 
-        # Run analysis
+        # Run pure-Python analysis on LIVE data
         analysis = _run_analysis_pure(enriched_ship)
         analysis["tracking_number"] = track_id
         all_analyses.append(analysis)
 
-        # Categorize by analysis results
+        # Categorize using LIVE status from analysis (not SQLite tag)
+        live_tag = analysis.get("current_tag", "").lower()
+        is_exception = any(kw in live_tag for kw in (
+            "exception", "undelivered", "failed", "delivery failed", "undeliverable",
+        ))
+        is_return = any(kw in live_tag for kw in ("rto", "return", "returned"))
+
+        if is_exception:
+            exception_ships.append({**enriched_ship, "_analysis": analysis})
+        if is_return:
+            return_ships.append({**enriched_ship, "_analysis": analysis})
         if analysis["is_delayed"] and not is_exception and not is_return:
-            delayed_ships.append({**ship, "_analysis": analysis})
+            delayed_ships.append({**enriched_ship, "_analysis": analysis})
         if analysis["is_stuck"] and not is_exception and not is_return:
-            stuck_ships.append({**ship, "_analysis": analysis})
+            stuck_ships.append({**enriched_ship, "_analysis": analysis})
         if analysis["is_high_risk"]:
-            high_risk_ships.append({**ship, "_analysis": analysis})
+            high_risk_ships.append({**enriched_ship, "_analysis": analysis})
 
     return {
         "exception_shipments": exception_ships,
